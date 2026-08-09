@@ -503,13 +503,13 @@ function showAuthError(msg){
 
 function showApp(){
   document.getElementById('authScreen').style.display = 'none';
-  document.getElementById('appShell').style.display = '';
+  document.getElementById('appShell').style.display = 'block';
 }
 
 function showAuth(){
   cryptoKey = null;
   vaultSalt = null;
-  document.getElementById('authScreen').style.display = '';
+  document.getElementById('authScreen').style.display = 'flex';
   document.getElementById('appShell').style.display = 'none';
 }
 
