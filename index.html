@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Учёт финансов по проектам</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --border:#2a2f3a;
+    --text:#e8eaed; --muted:#9aa3b2; --accent:#5b8cff; --green:#3ecf8e; --red:#ff6b6b; --yellow:#ffc857;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);}
+  header{padding:20px 32px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;}
+  header h1{margin:0;font-size:19px;font-weight:600;cursor:pointer;}
+  header .sub{color:var(--muted);font-size:13px;margin-top:4px;}
+  #storageWarning{display:none;background:rgba(255,107,107,.12);color:var(--red);border:1px solid var(--red);border-radius:8px;padding:10px 14px;margin:16px 32px 0;font-size:13px;}
+  .container{padding:24px 32px;max-width:1200px;margin:0 auto;}
+  select, button, input, textarea{
+    background:var(--panel2);color:var(--text);border:1px solid var(--border);
+    border-radius:8px;padding:8px 12px;font-size:14px;font-family:inherit;
+  }
+  button{cursor:pointer;transition:.15s;}
+  button:hover{border-color:var(--accent);}
+  button.primary{background:var(--accent);border-color:var(--accent);color:white;font-weight:500;}
+  button.primary:hover{opacity:.9;}
+  button.ghost{background:transparent;}
+  button.danger{color:var(--red);}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+
+  /* ---- Project list view ---- */
+  .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px;}
+  .project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;}
+  .project-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px 20px;cursor:pointer;transition:.15s;}
+  .project-card:hover{border-color:#3d4654;background:var(--panel2);}
+  .project-card .pname{font-size:15px;font-weight:600;margin-bottom:12px;}
+  .project-card .pmeta{font-size:12px;color:var(--muted);margin-bottom:14px;}
+  .project-card .phero{font-size:22px;font-weight:600;margin-bottom:4px;}
+  .project-card .phero-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+  .project-card .pmini{display:flex;gap:16px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;}
+  .project-card .pmini div{flex:1;}
+  .project-card .pmini .ml{color:var(--muted);margin-bottom:2px;}
+  .project-card .pmini .mv{font-weight:600;}
+  .empty{color:var(--muted);text-align:center;padding:60px 20px;font-size:14px;}
+
+  /* ---- Dashboard overview ---- */
+  .dash-overview{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:20px;}
+  .dash-overview .hero-row{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:20px;}
+  .dash-overview .hero-main .hero-label{font-size:12px;color:var(--muted);margin-bottom:4px;}
+  .dash-overview .hero-main .hero-value{font-size:32px;font-weight:700;line-height:1.1;}
+  .dash-overview .hero-main .hero-value.positive{color:var(--green);}
+  .dash-overview .hero-main .hero-value.negative{color:var(--red);}
+  .dash-overview .hero-meta{font-size:13px;color:var(--muted);}
+  .dash-columns{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;}
+  .dash-block{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px 20px;}
+  .dash-block h3{margin:0 0 14px;font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+  .dash-block .metric{display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;}
+  .dash-block .metric:last-child{border-bottom:none;}
+  .dash-block .metric .mk{color:var(--muted);}
+  .dash-block .metric .mv{font-weight:600;}
+  .dash-block .metric .mv.alert{color:var(--red);}
+  .dash-block .metric .mv.ok{color:var(--green);}
+  .dash-block .metric .mv.warn{color:var(--yellow);}
+
+  .header-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .storage-status{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;}
+  .storage-status .dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0;}
+  .storage-status.warn .dot{background:var(--yellow);}
+  .storage-status.error .dot{background:var(--red);}
+
+  /* ---- Project detail view ---- */
+  .back-btn{margin-bottom:16px;}
+  .project-header{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:20px 24px;margin-bottom:20px;}
+  .project-header .row1{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;}
+  .project-header h2{margin:0 0 4px;font-size:20px;}
+  .project-header .client{color:var(--muted);font-size:13px;}
+  .project-header .comment{color:var(--muted);font-size:13px;margin-top:8px;font-style:italic;}
+
+  .month-bar{display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap;}
+  .month-tabs{display:flex;gap:6px;flex-wrap:wrap;}
+  .month-tab{display:flex;align-items:center;gap:6px;padding:7px 10px 7px 14px;border-radius:20px;font-size:13px;border:1px solid var(--border);background:var(--panel2);cursor:pointer;}
+  .month-tab.active{background:var(--accent);border-color:var(--accent);color:white;font-weight:500;}
+  .month-tab .mt-del{display:flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;font-size:11px;opacity:.6;}
+  .month-tab .mt-del:hover{opacity:1;background:rgba(255,255,255,.2);}
+
+  .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:24px;}
+  .summary-block{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px 20px;}
+  .summary-block h4{margin:0 0 12px;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+  .summary-block .metric{display:flex;justify-content:space-between;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--border);font-size:14px;}
+  .summary-block .metric:last-child{border-bottom:none;}
+  .summary-block .metric .mk{color:var(--muted);}
+  .summary-block .metric .mv{font-weight:600;}
+  .summary-block .metric .mv.alert{color:var(--red);}
+  .summary-block .metric .mv.ok{color:var(--green);}
+  .summary-block .metric .mv.warn{color:var(--yellow);}
+  .summary-block .metric .mv.hero{font-size:18px;}
+
+  .month-select-row{display:flex;gap:8px;}
+  .month-select-row select{flex:1;}
+
+  table{width:100%;border-collapse:collapse;background:var(--panel);border-radius:12px;overflow:hidden;border:1px solid var(--border);}
+  th,td{padding:10px 12px;text-align:left;font-size:13px;border-bottom:1px solid var(--border);}
+  th{background:var(--panel2);color:var(--muted);font-weight:500;text-transform:uppercase;font-size:11px;letter-spacing:.03em;}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:#1a1e27;}
+  td input{width:100%;border:1px solid transparent;background:transparent;padding:6px 8px;font-size:13px;color:var(--text);}
+  td input:hover, td input:focus{border-color:var(--border);background:var(--panel2);outline:none;}
+  .status-pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;}
+  .status-paid{background:rgba(62,207,142,.15);color:var(--green);}
+  .status-partial{background:rgba(255,200,87,.15);color:var(--yellow);}
+  .status-unpaid{background:rgba(255,107,107,.15);color:var(--red);}
+  .row-actions{display:flex;gap:6px;justify-content:flex-end;}
+  .row-actions button{padding:4px 8px;font-size:12px;}
+  .col-actions{width:44px;text-align:right;}
+  .section{margin-top:28px;}
+  .section-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;}
+  .section-title{font-size:15px;font-weight:600;display:flex;align-items:center;}
+  .section-title .icon{margin-right:8px;}
+  .badge-count{background:var(--panel2);color:var(--muted);border-radius:20px;padding:2px 8px;font-size:11px;margin-left:6px;}
+  .table-wrap{overflow-x:auto;}
+  .col-narrow{width:130px;}
+  .col-comment{min-width:160px;}
+
+  /* ---- Modal ---- */
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);align-items:center;justify-content:center;z-index:100;}
+  .modal-overlay.open{display:flex;}
+  .modal{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:24px;width:420px;max-width:92vw;}
+  .modal.wide{width:520px;}
+  .modal h3{margin:0 0 16px;font-size:17px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;}
+  .field input, .field textarea{width:100%;}
+  .field textarea{resize:vertical;min-height:60px;}
+  .field .hint{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5;}
+  .field .hint a{color:var(--accent);}
+  .sync-info{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:13px;margin-bottom:14px;}
+  .sync-info .sync-row{display:flex;justify-content:space-between;padding:4px 0;}
+  .sync-info .sync-row span:first-child{color:var(--muted);}
+  .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
+
+  /* ---- Auth screen ---- */
+  #authScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+  .auth-card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:32px;width:100%;max-width:400px;}
+  .auth-card h1{margin:0 0 8px;font-size:22px;}
+  .auth-card .auth-sub{color:var(--muted);font-size:13px;margin-bottom:24px;line-height:1.5;}
+  .auth-error{color:var(--red);font-size:13px;margin-bottom:12px;display:none;}
+  .auth-tabs{display:flex;gap:8px;margin-bottom:20px;}
+  .auth-tab{flex:1;padding:10px;border:1px solid var(--border);background:var(--panel2);border-radius:8px;cursor:pointer;font-size:14px;text-align:center;}
+  .auth-tab.active{background:var(--accent);border-color:var(--accent);color:white;font-weight:500;}
+  .auth-submit{width:100%;margin-top:8px;min-height:42px;}
+  .auth-security{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-top:20px;font-size:12px;color:var(--muted);line-height:1.6;}
+  #appShell{display:none;}
+
+  footer{padding:20px 32px;color:var(--muted);font-size:12px;text-align:center;}
+
+  @media (max-width:640px){
+    header{padding:14px 16px;flex-direction:column;align-items:stretch;}
+    header h1{font-size:17px;}
+    .container{padding:16px;}
+    #storageWarning{margin:12px 16px 0;font-size:12px;}
+    .header-actions{width:100%;}
+    .header-actions button{flex:1;min-height:40px;font-size:13px;}
+    .toolbar{flex-direction:column;align-items:stretch;}
+    .toolbar button{width:100%;min-height:40px;}
+    .dash-overview{padding:16px;}
+    .dash-overview .hero-main .hero-value{font-size:26px;}
+    .project-card .pmini{flex-direction:column;gap:10px;}
+    .project-header{padding:16px;}
+    .project-header .row-actions{width:100%;justify-content:flex-start;}
+    .month-bar{align-items:stretch;}
+    .month-tabs{width:100%;}
+    .section-head{align-items:stretch;}
+    .section-head .primary{width:100%;min-height:40px;}
+    .modal-actions{flex-direction:column-reverse;}
+    .modal-actions button{width:100%;min-height:40px;}
+    th,td{padding:8px 10px;font-size:12px;}
+    .col-narrow{width:100px;}
+    footer{padding:16px;font-size:11px;}
+  }
+</style>
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Финансы">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+</head>
+<body>
+
+<!-- AUTH -->
+<div id="authScreen">
+  <div class="auth-card">
+    <h1>Учёт финансов</h1>
+    <p class="auth-sub">Вход по email и паролю. Данные шифруются и доступны только вам.</p>
+    <div class="auth-tabs">
+      <button type="button" class="auth-tab active" id="authTabLogin">Вход</button>
+      <button type="button" class="auth-tab" id="authTabSignup">Регистрация</button>
+    </div>
+    <div class="auth-error" id="authError"></div>
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>Пароль</label>
+      <input type="password" id="authPassword" placeholder="Минимум 6 символов" autocomplete="current-password">
+    </div>
+    <button type="button" class="primary auth-submit" id="authSubmit">Войти</button>
+    <div class="auth-security">
+      Данные шифруются AES-256 на вашем устройстве перед отправкой на сервер. Даже администратор базы видит только зашифрованный текст. Без вашего пароля прочитать их невозможно.
+    </div>
+  </div>
+</div>
+
+<div id="appShell">
+<header>
+  <div>
+    <h1 id="homeLink">Учёт финансов по проектам</h1>
+    <div class="sub" id="storageStatusLine">Загрузка…</div>
+  </div>
+  <div class="header-actions">
+    <button id="exportBtn" title="Резервная копия">Экспорт</button>
+    <button id="importBtn" title="Загрузить из файла">Импорт</button>
+    <button id="logoutBtn">Выйти</button>
+    <input type="file" id="importFile" accept=".json,application/json" hidden>
+  </div>
+</header>
+
+<div id="storageWarning" style="display:none;"></div>
+
+<div class="container">
+
+  <!-- LIST VIEW -->
+  <div id="listView">
+    <div id="overallSummary"></div>
+    <div class="toolbar">
+      <h2 style="margin:0;font-size:16px;font-weight:600;">Проекты</h2>
+      <button id="addProjectBtn" class="primary">+ Новый проект</button>
+    </div>
+    <div class="project-grid" id="projectGrid"></div>
+  </div>
+
+  <!-- PROJECT DETAIL VIEW -->
+  <div id="projectView" style="display:none;">
+    <button class="back-btn ghost" id="backBtn">← Все проекты</button>
+
+    <div class="project-header">
+      <div class="row1">
+        <div>
+          <h2 id="pdName"></h2>
+        </div>
+        <div class="row-actions">
+          <button id="editProjectBtn">Изменить проект</button>
+          <button class="danger" id="deleteProjectBtn">Удалить проект</button>
+        </div>
+      </div>
+      <div class="comment" id="pdComment"></div>
+    </div>
+
+    <div class="month-bar">
+      <div class="month-tabs" id="monthTabs"></div>
+      <button id="addMonthBtn">+ Месяц</button>
+      <button id="copyMonthBtn">⧉ Скопировать месяц</button>
+    </div>
+
+    <div class="summary-grid" id="summaryGrid"></div>
+
+    <!-- WORKS -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">Работы и стоимость<span class="badge-count" id="worksCount"></span></div>
+        <button id="addWorkBtn" class="primary">+ Работа</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Описание работы</th>
+              <th class="col-narrow">Стоимость</th>
+              <th class="col-narrow">Оплачено клиентом</th>
+              <th class="col-narrow">Статус</th>
+              <th class="col-comment">Комментарий</th>
+              <th class="col-actions"></th>
+            </tr>
+          </thead>
+          <tbody id="worksBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- STAFF -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">Сотрудники и выплаты<span class="badge-count" id="staffCount"></span></div>
+        <button id="addStaffBtn" class="primary">+ Сотрудник</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Сотрудник</th>
+              <th class="col-narrow">Сумма к оплате</th>
+              <th class="col-narrow">Выплачено</th>
+              <th class="col-narrow">Статус</th>
+              <th class="col-comment">Комментарий</th>
+              <th class="col-actions"></th>
+            </tr>
+          </thead>
+          <tbody id="staffBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer id="footerNote">Данные зашифрованы и сохраняются автоматически.</footer>
+</div><!-- /appShell -->
+
+<!-- MODAL: create/edit project -->
+<div class="modal-overlay" id="projectModal">
+  <div class="modal">
+    <h3 id="projectModalTitle">Новый проект</h3>
+    <div class="field">
+      <label>Название проекта</label>
+      <input type="text" id="mProjectName" placeholder="Например: ООО Клиент А">
+    </div>
+    <div class="field">
+      <label>Первый месяц учёта</label>
+      <div class="month-select-row" id="newProjectMonthRow"></div>
+    </div>
+    <div class="field">
+      <label>Комментарий</label>
+      <textarea id="mProjectComment" placeholder="Необязательно"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="ghost" id="mCancel">Отмена</button>
+      <button class="primary" id="mSave">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: add month -->
+<div class="modal-overlay" id="monthModal">
+  <div class="modal">
+    <h3>Добавить месяц</h3>
+    <div class="field">
+      <label>Месяц</label>
+      <div class="month-select-row" id="addMonthRow"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="ghost" id="monthCancel">Отмена</button>
+      <button class="primary" id="monthSave">Добавить</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: copy month -->
+<div class="modal-overlay" id="copyMonthModal">
+  <div class="modal">
+    <h3>Скопировать месяц</h3>
+    <div class="field" id="copyMonthSourceLabel" style="color:var(--muted);font-size:13px;"></div>
+    <div class="field">
+      <label>Скопировать в месяц</label>
+      <div class="month-select-row" id="copyMonthRow"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="ghost" id="copyMonthCancel">Отмена</button>
+      <button class="primary" id="copyMonthSave">Скопировать</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ========== CONFIG & SUPABASE ========== */
+function isConfigured(){
+  const c = window.SUPABASE_CONFIG;
+  return c && c.url && c.anonKey && !c.url.includes('YOUR_PROJECT') && !c.anonKey.includes('YOUR_ANON');
+}
+
+let supabase = null;
+let cryptoKey = null;
+let vaultSalt = null;
+let saveTimer = null;
+let saveState = 'idle'; // idle | saving | saved | error
+let lastSavedAt = null;
+let authMode = 'login';
+
+let projects = [];
+let works = [];
+let staff = [];
+
+function cid(){ return 'r'+Math.random().toString(36).slice(2,10); }
+
+function getPayload(){
+  return { version: 3, updatedAt: new Date().toISOString(), projects, works, staff };
+}
+
+function applyPayload(data){
+  if(!Array.isArray(data.projects) || !Array.isArray(data.works) || !Array.isArray(data.staff)) return false;
+  projects = data.projects;
+  works = data.works;
+  staff = data.staff;
+  return true;
+}
+
+function emptyPayload(){ projects=[]; works=[]; staff=[]; }
+
+/* ========== ENCRYPTION (AES-256-GCM + PBKDF2) ========== */
+function bufToB64(buf){
+  return btoa(String.fromCharCode(...new Uint8Array(buf)));
+}
+function b64ToBuf(b64){
+  return Uint8Array.from(atob(b64), c=>c.charCodeAt(0));
+}
+function randomSalt(){
+  return bufToB64(crypto.getRandomValues(new Uint8Array(16)));
+}
+
+async function deriveKey(password, saltB64){
+  const salt = b64ToBuf(saltB64);
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name:'PBKDF2', salt, iterations:100000, hash:'SHA-256' },
+    keyMaterial,
+    { name:'AES-GCM', length:256 },
+    false,
+    ['encrypt','decrypt']
+  );
+}
+
+async function encryptJSON(key, obj){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = new TextEncoder();
+  const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, enc.encode(JSON.stringify(obj)));
+  const combined = new Uint8Array(iv.length + ct.byteLength);
+  combined.set(iv);
+  combined.set(new Uint8Array(ct), iv.length);
+  return bufToB64(combined);
+}
+
+async function decryptJSON(key, ciphertextB64){
+  const combined = b64ToBuf(ciphertextB64);
+  const iv = combined.slice(0, 12);
+  const ct = combined.slice(12);
+  const dec = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ct);
+  return JSON.parse(new TextDecoder().decode(dec));
+}
+
+/* ========== VAULT (Supabase) ========== */
+async function loadVault(password){
+  const { data: { user } } = await supabase.auth.getUser();
+  if(!user) throw new Error('Не авторизован');
+
+  const { data, error } = await supabase.from('finance_vault').select('salt,ciphertext,updated_at').eq('user_id', user.id).maybeSingle();
+  if(error) throw new Error(error.message);
+
+  if(!data){
+    vaultSalt = randomSalt();
+    cryptoKey = await deriveKey(password, vaultSalt);
+    emptyPayload();
+    await pushVault();
+    return;
+  }
+
+  vaultSalt = data.salt;
+  cryptoKey = await deriveKey(password, vaultSalt);
+  try {
+    const payload = await decryptJSON(cryptoKey, data.ciphertext);
+    applyPayload(payload);
+    lastSavedAt = data.updated_at;
+  } catch(e){
+    throw new Error('Неверный пароль или повреждённые данные');
+  }
+}
+
+async function pushVault(){
+  if(!cryptoKey || !vaultSalt) return;
+  const { data: { user } } = await supabase.auth.getUser();
+  if(!user) return;
+
+  const ciphertext = await encryptJSON(cryptoKey, getPayload());
+  const { error } = await supabase.from('finance_vault').upsert({
+    user_id: user.id,
+    salt: vaultSalt,
+    ciphertext,
+    updated_at: new Date().toISOString()
+  });
+  if(error) throw new Error(error.message);
+  lastSavedAt = new Date().toISOString();
+}
+
+function scheduleSave(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(doSave, 1200);
+}
+
+async function doSave(){
+  if(!cryptoKey) return;
+  saveState = 'saving';
+  updateStorageStatus();
+  try {
+    await pushVault();
+    saveState = 'saved';
+  } catch(e){
+    console.error(e);
+    saveState = 'error';
+  }
+  updateStorageStatus();
+}
+
+function saveProjects(){ scheduleSave(); }
+function saveWorks(){ scheduleSave(); }
+function saveStaff(){ scheduleSave(); }
+function saveAll(){ scheduleSave(); }
+
+function updateStorageStatus(){
+  const line = document.getElementById('storageStatusLine');
+  const footer = document.getElementById('footerNote');
+  if(!line) return;
+  const labels = { idle:'готово', saving:'сохранение…', saved:'сохранено', error:'ошибка сохранения' };
+  const dotCls = saveState==='error' ? 'error' : saveState==='saving' ? 'warn' : '';
+  line.innerHTML = `<span class="storage-status ${dotCls}"><span class="dot"></span>Зашифровано · ${labels[saveState]||saveState}</span>`;
+  if(footer) footer.textContent = 'Данные шифруются на устройстве (AES-256) и хранятся в облаке. Доступ только по вашему логину и паролю.';
+}
+
+/* ========== AUTH UI ========== */
+function showAuthError(msg){
+  const el = document.getElementById('authError');
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+function showApp(){
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('appShell').style.display = '';
+}
+
+function showAuth(){
+  cryptoKey = null;
+  vaultSalt = null;
+  document.getElementById('authScreen').style.display = '';
+  document.getElementById('appShell').style.display = 'none';
+}
+
+function setAuthMode(mode){
+  authMode = mode;
+  document.getElementById('authTabLogin').classList.toggle('active', mode==='login');
+  document.getElementById('authTabSignup').classList.toggle('active', mode==='signup');
+  document.getElementById('authSubmit').textContent = mode==='login' ? 'Войти' : 'Зарегистрироваться';
+  document.getElementById('authPassword').autocomplete = mode==='login' ? 'current-password' : 'new-password';
+  showAuthError('');
+}
+
+document.getElementById('authTabLogin').addEventListener('click', ()=> setAuthMode('login'));
+document.getElementById('authTabSignup').addEventListener('click', ()=> setAuthMode('signup'));
+
+document.getElementById('authSubmit').addEventListener('click', async ()=>{
+  if(!isConfigured()){
+    showAuthError('Supabase не настроен. Заполните config.js (см. инструкцию).');
+    return;
+  }
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  if(!email || !password){ showAuthError('Введите email и пароль.'); return; }
+  if(password.length < 6){ showAuthError('Пароль — минимум 6 символов.'); return; }
+
+  const btn = document.getElementById('authSubmit');
+  btn.disabled = true;
+  btn.textContent = authMode==='login' ? 'Вход…' : 'Регистрация…';
+  showAuthError('');
+
+  try {
+    if(authMode === 'signup'){
+      const { error } = await supabase.auth.signUp({ email, password });
+      if(error) throw error;
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if(error) throw error;
+    }
+    await loadVault(password);
+    saveState = 'saved';
+    showApp();
+    updateStorageStatus();
+    showList();
+    document.getElementById('authPassword').value = '';
+  } catch(e){
+    showAuthError(e.message || 'Ошибка входа');
+  }
+  btn.disabled = false;
+  btn.textContent = authMode==='login' ? 'Войти' : 'Зарегистрироваться';
+});
+
+document.getElementById('logoutBtn').addEventListener('click', async ()=>{
+  await supabase.auth.signOut();
+  cryptoKey = null;
+  emptyPayload();
+  showAuth();
+  showAuthError('');
+});
+
+function exportData(){
+  const payload = {
+    version: 3,
+    exportedAt: new Date().toISOString(),
+    projects, works, staff
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'finance-backup-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importData(file){
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try {
+      const data = JSON.parse(reader.result);
+      if(!Array.isArray(data.projects) || !Array.isArray(data.works) || !Array.isArray(data.staff)){
+        alert('Неверный формат файла.');
+        return;
+      }
+      if(!confirm('Импорт заменит все текущие данные. Продолжить?')) return;
+      projects = data.projects;
+      works = data.works;
+      staff = data.staff;
+      saveAll();
+      showList();
+      alert('Данные успешно загружены.');
+    } catch(e){
+      alert('Не удалось прочитать файл: ' + e.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+document.getElementById('exportBtn').addEventListener('click', exportData);
+document.getElementById('importBtn').addEventListener('click', ()=> document.getElementById('importFile').click());
+document.getElementById('importFile').addEventListener('change', e=>{
+  const file = e.target.files[0];
+  if(file) importData(file);
+  e.target.value = '';
+});
+
+async function initApp(){
+  if(!isConfigured()){
+    showAuthError('Supabase не настроен. Заполните config.js — см. инструкцию ниже.');
+    return;
+  }
+  supabase = window.supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if(session){
+    showAuthError('Сессия активна. Введите пароль для расшифровки данных.');
+    setAuthMode('login');
+    document.getElementById('authEmail').value = session.user.email || '';
+  }
+}
+
+function fmt(n){ return (Number(n)||0).toLocaleString('ru-RU'); }
+function esc(s){ return String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+function statusOf(total, paid){ if(total>0 && paid>=total) return 'paid'; if(paid>0) return 'partial'; return 'unpaid'; }
+function statusLabel(s){ return s==='paid'?'Оплачено':s==='partial'?'Частично':'Не оплачено'; }
+function statusClass(s){ return s==='paid'?'status-paid':s==='partial'?'status-partial':'status-unpaid'; }
+function monthLabel(m){ if(!m) return ''; const [y,mo]=m.split('-'); const names=['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек']; return names[parseInt(mo,10)-1]+' '+y; }
+function projectById(id){ return projects.find(p=>p.id===id); }
+
+/* ---------- Money input formatting ---------- */
+function fmtInput(n){ n = Number(n)||0; return n===0 ? '' : n.toLocaleString('ru-RU'); }
+function parseMoneyInput(str){ return Number(String(str).replace(/[^\d-]/g,''))||0; }
+
+/* ---------- Custom month/year select widgets ---------- */
+const MONTH_NAMES_FULL = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+function monthSelectHTML(prefix){
+  const curYear = new Date().getFullYear();
+  const years = [];
+  for(let y=curYear-2; y<=curYear+3; y++) years.push(y);
+  const monthOpts = MONTH_NAMES_FULL.map((m,i)=>`<option value="${String(i+1).padStart(2,'0')}">${m}</option>`).join('');
+  const yearOpts = years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  return `<select id="${prefix}_month">${monthOpts}</select><select id="${prefix}_year" style="max-width:110px;">${yearOpts}</select>`;
+}
+function setMonthSelectValue(prefix, monthStr){
+  const now = new Date();
+  const fallback = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const [y,m] = (monthStr || fallback).split('-');
+  const mEl = document.getElementById(prefix+'_month'), yEl = document.getElementById(prefix+'_year');
+  if(mEl) mEl.value = m;
+  if(yEl) yEl.value = y;
+}
+function getMonthSelectValue(prefix){
+  const m = document.getElementById(prefix+'_month').value;
+  const y = document.getElementById(prefix+'_year').value;
+  return y+'-'+m;
+}
+
+/* ---------- App state ---------- */
+let currentProjectId = null;
+let currentMonth = null;
+
+/* ---------- Views ---------- */
+function showList(){
+  currentProjectId = null; currentMonth = null;
+  document.getElementById('listView').style.display = '';
+  document.getElementById('projectView').style.display = 'none';
+  renderList();
+}
+function showProject(id){
+  currentProjectId = id;
+  const p = projectById(id);
+  if(!p) return showList();
+  currentMonth = p.months[p.months.length-1] || null;
+  document.getElementById('listView').style.display = 'none';
+  document.getElementById('projectView').style.display = '';
+  renderProject();
+}
+
+document.getElementById('homeLink').addEventListener('click', showList);
+document.getElementById('backBtn').addEventListener('click', showList);
+
+document.getElementById('newProjectMonthRow').innerHTML = monthSelectHTML('newProject');
+document.getElementById('addMonthRow').innerHTML = monthSelectHTML('addMonth');
+document.getElementById('copyMonthRow').innerHTML = monthSelectHTML('copyMonth');
+
+/* ---------- List view render ---------- */
+function projectStats(p){
+  const w = works.filter(x=>x.projectId===p.id);
+  const s = staff.filter(x=>x.projectId===p.id);
+  const cost = w.reduce((a,x)=>a+Number(x.cost||0),0);
+  const clientPaid = w.reduce((a,x)=>a+Number(x.paidByClient||0),0);
+  const staffOwed = s.reduce((a,x)=>a+Number(x.amount||0),0);
+  const staffPaid = s.reduce((a,x)=>a+Number(x.paid||0),0);
+  return {cost, clientPaid, staffOwed, staffPaid, profit: clientPaid-staffPaid};
+}
+
+function renderOverallSummary(){
+  const totalCost = works.reduce((s,w)=>s+Number(w.cost||0),0);
+  const totalClientPaid = works.reduce((s,w)=>s+Number(w.paidByClient||0),0);
+  const totalStaffOwed = staff.reduce((s,x)=>s+Number(x.amount||0),0);
+  const totalStaffPaid = staff.reduce((s,x)=>s+Number(x.paid||0),0);
+  const owedByClients = Math.max(totalCost - totalClientPaid, 0);
+  const owedToStaff = Math.max(totalStaffOwed - totalStaffPaid, 0);
+  const profit = totalClientPaid - totalStaffPaid;
+  const profitCls = profit >= 0 ? 'positive' : 'negative';
+
+  const el = document.getElementById('overallSummary');
+  if(projects.length === 0){
+    el.innerHTML = '';
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="dash-overview">
+      <div class="hero-row">
+        <div class="hero-main">
+          <div class="hero-label">Чистая прибыль (получено − выплачено)</div>
+          <div class="hero-value ${profitCls}">${fmt(profit)} ₽</div>
+        </div>
+        <div class="hero-meta">${projects.length} ${projects.length===1?'проект':'проектов'}</div>
+      </div>
+      <div class="dash-columns">
+        <div class="dash-block">
+          <h3>Деньги от клиентов</h3>
+          <div class="metric"><span class="mk">Стоимость всех работ</span><span class="mv">${fmt(totalCost)} ₽</span></div>
+          <div class="metric"><span class="mk">Уже получено</span><span class="mv ok">${fmt(totalClientPaid)} ₽</span></div>
+          <div class="metric"><span class="mk">Ещё должны заплатить</span><span class="mv ${owedByClients>0?'alert':''}">${fmt(owedByClients)} ₽</span></div>
+        </div>
+        <div class="dash-block">
+          <h3>Выплаты сотрудникам</h3>
+          <div class="metric"><span class="mk">Начислено всего</span><span class="mv">${fmt(totalStaffOwed)} ₽</span></div>
+          <div class="metric"><span class="mk">Уже выплачено</span><span class="mv ok">${fmt(totalStaffPaid)} ₽</span></div>
+          <div class="metric"><span class="mk">Осталось выплатить</span><span class="mv ${owedToStaff>0?'warn':''}">${fmt(owedToStaff)} ₽</span></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderList(){
+  renderOverallSummary();
+  const grid = document.getElementById('projectGrid');
+  if(projects.length===0){
+    grid.innerHTML = `<div class="empty" style="grid-column:1/-1;">Пока нет проектов. Нажмите «+ Новый проект», чтобы начать.</div>`;
+    return;
+  }
+  grid.innerHTML = projects.map(p=>{
+    const st = projectStats(p);
+    const months = (p.months||[]).slice().sort();
+    const owedClient = Math.max(st.cost - st.clientPaid, 0);
+    const owedStaff = Math.max(st.staffOwed - st.staffPaid, 0);
+    return `
+    <div class="project-card" data-id="${p.id}">
+      <div class="pname">${esc(p.name)}</div>
+      <div class="pmeta">${months.length ? months.map(monthLabel).join(' · ') : 'Без месяцев'}</div>
+      <div class="phero-label">Прибыль</div>
+      <div class="phero" style="color:${st.profit>=0?'var(--green)':'var(--red)'}">${fmt(st.profit)} ₽</div>
+      <div class="pmini">
+        <div><div class="ml">Получено</div><div class="mv">${fmt(st.clientPaid)} ₽</div></div>
+        <div><div class="ml">Должны</div><div class="mv" style="color:${owedClient>0?'var(--red)':'inherit'}">${fmt(owedClient)} ₽</div></div>
+        <div><div class="ml">К выплате</div><div class="mv" style="color:${owedStaff>0?'var(--yellow)':'inherit'}">${fmt(owedStaff)} ₽</div></div>
+      </div>
+    </div>`;
+  }).join('');
+  grid.querySelectorAll('.project-card').forEach(card=>{
+    card.addEventListener('click', ()=> showProject(card.getAttribute('data-id')));
+  });
+}
+
+/* ---------- Project detail render ---------- */
+function renderProject(){
+  const p = projectById(currentProjectId);
+  if(!p) return showList();
+
+  document.getElementById('pdName').textContent = p.name;
+  document.getElementById('pdComment').textContent = p.comment || '';
+  document.getElementById('pdComment').style.display = p.comment ? '' : 'none';
+
+  const months = (p.months||[]).slice().sort();
+  const tabs = document.getElementById('monthTabs');
+  if(months.length===0){
+    tabs.innerHTML = `<span style="color:var(--muted);font-size:13px;">Нет месяцев — добавьте первый</span>`;
+    currentMonth = null;
+  } else {
+    if(!currentMonth || !months.includes(currentMonth)) currentMonth = months[months.length-1];
+    tabs.innerHTML = months.map(m=>`<div class="month-tab ${m===currentMonth?'active':''}" data-month="${m}">${monthLabel(m)}<span class="mt-del" data-del-month="${m}">✕</span></div>`).join('');
+    tabs.querySelectorAll('.month-tab').forEach(tab=>{
+      tab.addEventListener('click', (e)=>{
+        if(e.target.classList.contains('mt-del')) return;
+        currentMonth = tab.getAttribute('data-month'); renderProject();
+      });
+    });
+    tabs.querySelectorAll('.mt-del').forEach(delBtn=>{
+      delBtn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const m = delBtn.getAttribute('data-del-month');
+        if(!confirm(`Удалить месяц ${monthLabel(m)}? Все работы и выплаты за этот месяц будут удалены.`)) return;
+        const pr = projectById(currentProjectId);
+        pr.months = (pr.months||[]).filter(x=>x!==m);
+        works = works.filter(w=>!(w.projectId===currentProjectId && w.month===m));
+        staff = staff.filter(s=>!(s.projectId===currentProjectId && s.month===m));
+        saveProjects(); saveWorks(); saveStaff();
+        if(currentMonth===m) currentMonth = null;
+        renderProject();
+      });
+    });
+  }
+
+  renderSummary();
+  renderWorks();
+  renderStaff();
+}
+
+function renderSummary(){
+  const fw = works.filter(w=>w.projectId===currentProjectId && w.month===currentMonth);
+  const fs = staff.filter(s=>s.projectId===currentProjectId && s.month===currentMonth);
+  const totalCost = fw.reduce((s,w)=>s+Number(w.cost||0),0);
+  const totalClientPaid = fw.reduce((s,w)=>s+Number(w.paidByClient||0),0);
+  const totalStaffOwed = fs.reduce((s,x)=>s+Number(x.amount||0),0);
+  const totalStaffPaid = fs.reduce((s,x)=>s+Number(x.paid||0),0);
+  const owedByClients = Math.max(totalCost - totalClientPaid, 0);
+  const owedToStaff = Math.max(totalStaffOwed - totalStaffPaid, 0);
+  const profit = totalClientPaid - totalStaffPaid;
+
+  const monthTitle = currentMonth ? monthLabel(currentMonth) : '—';
+  document.getElementById('summaryGrid').innerHTML = `
+    <div class="summary-block">
+      <h4>Итог за ${monthTitle}</h4>
+      <div class="metric"><span class="mk">Прибыль</span><span class="mv hero ${profit>=0?'ok':'alert'}">${fmt(profit)} ₽</span></div>
+    </div>
+    <div class="summary-block">
+      <h4>Клиент</h4>
+      <div class="metric"><span class="mk">Стоимость работ</span><span class="mv">${fmt(totalCost)} ₽</span></div>
+      <div class="metric"><span class="mk">Оплачено</span><span class="mv ok">${fmt(totalClientPaid)} ₽</span></div>
+      <div class="metric"><span class="mk">Должен ещё</span><span class="mv ${owedByClients>0?'alert':''}">${fmt(owedByClients)} ₽</span></div>
+    </div>
+    <div class="summary-block">
+      <h4>Сотрудники</h4>
+      <div class="metric"><span class="mk">Начислено</span><span class="mv">${fmt(totalStaffOwed)} ₽</span></div>
+      <div class="metric"><span class="mk">Выплачено</span><span class="mv ok">${fmt(totalStaffPaid)} ₽</span></div>
+      <div class="metric"><span class="mk">Осталось</span><span class="mv ${owedToStaff>0?'warn':''}">${fmt(owedToStaff)} ₽</span></div>
+    </div>`;
+}
+
+function renderWorks(){
+  const list = works.filter(w=>w.projectId===currentProjectId && w.month===currentMonth);
+  document.getElementById('worksCount').textContent = list.length;
+  const body = document.getElementById('worksBody');
+  if(!currentMonth){
+    body.innerHTML = `<tr><td colspan="6" class="empty">Сначала добавьте месяц.</td></tr>`;
+    return;
+  }
+  if(list.length===0){
+    body.innerHTML = `<tr><td colspan="6" class="empty">Нет работ за этот месяц. Нажмите «+ Работа».</td></tr>`;
+    return;
+  }
+  body.innerHTML = list.map(w=>{
+    const st = statusOf(Number(w.cost||0), Number(w.paidByClient||0));
+    return `
+    <tr data-id="${w.id}">
+      <td><input type="text" value="${esc(w.description)}" data-field="description" placeholder="Что сделано"></td>
+      <td><input type="text" inputmode="numeric" class="money-input" value="${fmtInput(w.cost)}" data-field="cost" placeholder="0"></td>
+      <td><input type="text" inputmode="numeric" class="money-input" value="${fmtInput(w.paidByClient)}" data-field="paidByClient" placeholder="0"></td>
+      <td><span class="status-pill ${statusClass(st)}">${statusLabel(st)}</span></td>
+      <td class="col-comment"><input type="text" value="${esc(w.comment||'')}" data-field="comment" placeholder="Комментарий"></td>
+      <td class="row-actions col-actions"><button class="danger" data-action="delete">✕</button></td>
+    </tr>`;
+  }).join('');
+  body.querySelectorAll('.money-input').forEach(el=>{
+    el.addEventListener('input', e=>{
+      const caretAtEnd = e.target.selectionStart === e.target.value.length;
+      const raw = parseMoneyInput(e.target.value);
+      e.target.value = raw ? raw.toLocaleString('ru-RU') : '';
+      if(caretAtEnd) e.target.setSelectionRange(e.target.value.length, e.target.value.length);
+    });
+  });
+  body.querySelectorAll('input').forEach(el=>{
+    el.addEventListener('change', e=>{
+      const id = e.target.closest('tr').getAttribute('data-id');
+      const field = e.target.getAttribute('data-field');
+      const row = works.find(w=>w.id===id);
+      if(!row) return;
+      let val = e.target.value;
+      if(['cost','paidByClient'].includes(field)) val = parseMoneyInput(val);
+      row[field] = val;
+      saveWorks(); renderSummary(); renderWorks();
+    });
+  });
+  body.querySelectorAll('[data-action="delete"]').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const id = e.target.closest('tr').getAttribute('data-id');
+      if(confirm('Удалить запись о работе?')){ works = works.filter(w=>w.id!==id); saveWorks(); renderWorks(); renderSummary(); }
+    });
+  });
+}
+
+function renderStaff(){
+  const list = staff.filter(s=>s.projectId===currentProjectId && s.month===currentMonth);
+  document.getElementById('staffCount').textContent = list.length;
+  const body = document.getElementById('staffBody');
+  if(!currentMonth){
+    body.innerHTML = `<tr><td colspan="6" class="empty">Сначала добавьте месяц.</td></tr>`;
+    return;
+  }
+  if(list.length===0){
+    body.innerHTML = `<tr><td colspan="6" class="empty">Нет сотрудников за этот месяц. Нажмите «+ Сотрудник».</td></tr>`;
+    return;
+  }
+  body.innerHTML = list.map(s=>{
+    const st = statusOf(Number(s.amount||0), Number(s.paid||0));
+    return `
+    <tr data-id="${s.id}">
+      <td><input type="text" value="${esc(s.name)}" data-field="name" placeholder="Имя сотрудника"></td>
+      <td><input type="text" inputmode="numeric" class="money-input" value="${fmtInput(s.amount)}" data-field="amount" placeholder="0"></td>
+      <td><input type="text" inputmode="numeric" class="money-input" value="${fmtInput(s.paid)}" data-field="paid" placeholder="0"></td>
+      <td><span class="status-pill ${statusClass(st)}">${statusLabel(st)}</span></td>
+      <td class="col-comment"><input type="text" value="${esc(s.comment||'')}" data-field="comment" placeholder="Комментарий"></td>
+      <td class="row-actions col-actions"><button class="danger" data-action="delete">✕</button></td>
+    </tr>`;
+  }).join('');
+  body.querySelectorAll('.money-input').forEach(el=>{
+    el.addEventListener('input', e=>{
+      const caretAtEnd = e.target.selectionStart === e.target.value.length;
+      const raw = parseMoneyInput(e.target.value);
+      e.target.value = raw ? raw.toLocaleString('ru-RU') : '';
+      if(caretAtEnd) e.target.setSelectionRange(e.target.value.length, e.target.value.length);
+    });
+  });
+  body.querySelectorAll('input').forEach(el=>{
+    el.addEventListener('change', e=>{
+      const id = e.target.closest('tr').getAttribute('data-id');
+      const field = e.target.getAttribute('data-field');
+      const row = staff.find(s=>s.id===id);
+      if(!row) return;
+      let val = e.target.value;
+      if(['amount','paid'].includes(field)) val = parseMoneyInput(val);
+      row[field] = val;
+      saveStaff(); renderSummary(); renderStaff();
+    });
+  });
+  body.querySelectorAll('[data-action="delete"]').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const id = e.target.closest('tr').getAttribute('data-id');
+      if(confirm('Удалить запись о выплате?')){ staff = staff.filter(s=>s.id!==id); saveStaff(); renderStaff(); renderSummary(); }
+    });
+  });
+}
+
+/* ---------- Add work / staff ---------- */
+document.getElementById('addWorkBtn').addEventListener('click', ()=>{
+  if(!currentMonth){ alert('Сначала добавьте месяц.'); return; }
+  works.push({id:cid(), projectId:currentProjectId, month:currentMonth, description:'', cost:0, paidByClient:0, comment:''});
+  saveWorks(); renderWorks(); renderSummary();
+  const body = document.getElementById('worksBody');
+  const lastInput = body.querySelector('tr:last-child input');
+  if(lastInput) lastInput.focus();
+});
+document.getElementById('addStaffBtn').addEventListener('click', ()=>{
+  if(!currentMonth){ alert('Сначала добавьте месяц.'); return; }
+  staff.push({id:cid(), projectId:currentProjectId, month:currentMonth, name:'', amount:0, paid:0, comment:''});
+  saveStaff(); renderStaff(); renderSummary();
+  const body = document.getElementById('staffBody');
+  const lastInput = body.querySelector('tr:last-child input');
+  if(lastInput) lastInput.focus();
+});
+
+/* ---------- Project create/edit modal ---------- */
+const projectModal = document.getElementById('projectModal');
+let editingProjectId = null;
+
+document.getElementById('addProjectBtn').addEventListener('click', ()=>{
+  editingProjectId = null;
+  document.getElementById('projectModalTitle').textContent = 'Новый проект';
+  document.getElementById('mProjectName').value = '';
+  document.getElementById('mProjectComment').value = '';
+  setMonthSelectValue('newProject', null);
+  projectModal.classList.add('open');
+  setTimeout(()=> document.getElementById('mProjectName').focus(), 50);
+});
+
+document.getElementById('editProjectBtn').addEventListener('click', ()=>{
+  const p = projectById(currentProjectId);
+  if(!p) return;
+  editingProjectId = p.id;
+  document.getElementById('projectModalTitle').textContent = 'Изменить проект';
+  document.getElementById('mProjectName').value = p.name;
+  document.getElementById('mProjectComment').value = p.comment || '';
+  setMonthSelectValue('newProject', (p.months && p.months[0]) || null);
+  projectModal.classList.add('open');
+  setTimeout(()=> document.getElementById('mProjectName').focus(), 50);
+});
+
+document.getElementById('mCancel').addEventListener('click', ()=> projectModal.classList.remove('open'));
+
+document.getElementById('mSave').addEventListener('click', ()=>{
+  const name = document.getElementById('mProjectName').value.trim();
+  const comment = document.getElementById('mProjectComment').value.trim();
+  const month = getMonthSelectValue('newProject');
+  if(!name){ alert('Введите название проекта.'); return; }
+
+  if(editingProjectId){
+    const p = projectById(editingProjectId);
+    p.name = name; p.comment = comment;
+    saveProjects();
+    projectModal.classList.remove('open');
+    renderProject();
+  } else {
+    if(!month){ alert('Выберите первый месяц учёта.'); return; }
+    const p = {id: cid(), name, comment, months:[month]};
+    projects.push(p);
+    saveProjects();
+    projectModal.classList.remove('open');
+    showProject(p.id);
+  }
+});
+
+document.getElementById('deleteProjectBtn').addEventListener('click', ()=>{
+  if(!confirm('Удалить проект целиком, включая все работы и выплаты по всем месяцам?')) return;
+  const id = currentProjectId;
+  projects = projects.filter(p=>p.id!==id);
+  works = works.filter(w=>w.projectId!==id);
+  staff = staff.filter(s=>s.projectId!==id);
+  saveProjects(); saveWorks(); saveStaff();
+  showList();
+});
+
+/* ---------- Add month modal ---------- */
+const monthModal = document.getElementById('monthModal');
+document.getElementById('addMonthBtn').addEventListener('click', ()=>{
+  setMonthSelectValue('addMonth', null);
+  monthModal.classList.add('open');
+});
+document.getElementById('monthCancel').addEventListener('click', ()=> monthModal.classList.remove('open'));
+document.getElementById('monthSave').addEventListener('click', ()=>{
+  const m = getMonthSelectValue('addMonth');
+  if(!m) return;
+  const p = projectById(currentProjectId);
+  if(!p) return;
+  if(!p.months) p.months = [];
+  if(p.months.includes(m)){ alert('Такой месяц уже добавлен.'); return; }
+  p.months.push(m);
+  saveProjects();
+  currentMonth = m;
+  monthModal.classList.remove('open');
+  renderProject();
+});
+
+/* ---------- Copy month modal ---------- */
+const copyMonthModal = document.getElementById('copyMonthModal');
+document.getElementById('copyMonthBtn').addEventListener('click', ()=>{
+  if(!currentMonth){ alert('Сначала выберите месяц, который нужно скопировать.'); return; }
+  document.getElementById('copyMonthSourceLabel').textContent = `Копируются работы и сотрудники из месяца: ${monthLabel(currentMonth)}. Суммы оплат обнулятся — суммы стоимости/начисления останутся.`;
+  const [y,m] = currentMonth.split('-');
+  let nextM = parseInt(m,10)+1, nextY = parseInt(y,10);
+  if(nextM>12){ nextM=1; nextY++; }
+  setMonthSelectValue('copyMonth', nextY+'-'+String(nextM).padStart(2,'0'));
+  copyMonthModal.classList.add('open');
+});
+document.getElementById('copyMonthCancel').addEventListener('click', ()=> copyMonthModal.classList.remove('open'));
+document.getElementById('copyMonthSave').addEventListener('click', ()=>{
+  const target = getMonthSelectValue('copyMonth');
+  if(!target) return;
+  if(target === currentMonth){ alert('Выберите другой месяц.'); return; }
+  const p = projectById(currentProjectId);
+  if(!p) return;
+  if(!p.months) p.months = [];
+  if(!p.months.includes(target)) p.months.push(target);
+
+  const sourceWorks = works.filter(w=>w.projectId===currentProjectId && w.month===currentMonth);
+  sourceWorks.forEach(w=>{
+    works.push({id:cid(), projectId:currentProjectId, month:target, description:w.description, cost:w.cost, paidByClient:0, comment:w.comment});
+  });
+  const sourceStaff = staff.filter(s=>s.projectId===currentProjectId && s.month===currentMonth);
+  sourceStaff.forEach(s=>{
+    staff.push({id:cid(), projectId:currentProjectId, month:target, name:s.name, amount:s.amount, paid:0, comment:s.comment});
+  });
+
+  saveProjects(); saveWorks(); saveStaff();
+  currentMonth = target;
+  copyMonthModal.classList.remove('open');
+  renderProject();
+});
+
+/* ---------- Init ---------- */
+initApp();
+</script>
+</body>
+</html>
