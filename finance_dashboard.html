@@ -182,7 +182,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Финансы">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="config.js"></script>
+<script src="config.js?v=4"></script>
 </head>
 <body>
 
@@ -190,23 +190,19 @@
 <div id="authScreen">
   <div class="auth-card">
     <h1>Учёт финансов</h1>
-    <p class="auth-sub" id="authSub">Придумайте пароль для первого входа.</p>
-    <div class="auth-tabs">
-      <button type="button" class="auth-tab" id="authTabLogin">Вход</button>
-      <button type="button" class="auth-tab active" id="authTabSetup">Создать пароль</button>
-    </div>
+    <p class="auth-sub" id="authSub">Введите пароль</p>
     <div class="auth-error" id="authError"></div>
+    <div id="setupHint" style="display:none;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
+      Пароль ещё не настроен. Один раз на компьютере выполните в Terminal:<br>
+      <code style="color:var(--text);">cd "/Users/paveline/Desktop/Cursor Projects/Studio" && node setup-password.mjs</code>
+    </div>
     <div class="field">
       <label>Пароль</label>
       <input type="password" id="authPassword" placeholder="Ваш пароль" autocomplete="current-password">
     </div>
-    <div class="field" id="confirmField">
-      <label>Повторите пароль</label>
-      <input type="password" id="authPassword2" placeholder="Ещё раз" autocomplete="new-password">
-    </div>
-    <button type="button" class="primary auth-submit" id="authSubmit">Создать пароль</button>
+    <button type="button" class="primary auth-submit" id="authSubmit">Войти</button>
     <div class="auth-security">
-      Один личный пароль. Данные шифруются и хранятся в облаке — без пароля их не прочитать.
+      Данные шифруются и хранятся в облаке. Доступ только по паролю.
     </div>
   </div>
 </div>
@@ -385,7 +381,6 @@ let vaultSalt = null;
 let saveTimer = null;
 let saveState = 'idle';
 let lastSavedAt = null;
-let isFirstSetup = false;
 
 let projects = [];
 let works = [];
@@ -454,15 +449,7 @@ async function loadVault(password){
   const { data, error } = await supabase.from('finance_vault').select('salt,ciphertext,updated_at').eq('id', VAULT_ID).maybeSingle();
   if(error) throw new Error(vaultTableHint(error.message));
 
-  if(!data){
-    if(!isFirstSetup) throw new Error('Неверный пароль');
-    if(password.length < 6) throw new Error('Пароль — минимум 6 символов');
-    vaultSalt = randomSalt();
-    cryptoKey = await deriveKey(password, vaultSalt);
-    emptyPayload();
-    await pushVault();
-    return;
-  }
+  if(!data) throw new Error('Неверный пароль');
 
   vaultSalt = data.salt;
   cryptoKey = await deriveKey(password, vaultSalt);
@@ -535,49 +522,22 @@ function showAuth(){
   document.getElementById('appShell').style.display = 'none';
 }
 
-function setSetupMode(first){
-  isFirstSetup = first;
-  document.getElementById('authTabLogin').classList.toggle('active', !first);
-  document.getElementById('authTabSetup').classList.toggle('active', first);
-  document.getElementById('authSub').textContent = first
-    ? 'Придумайте пароль (минимум 6 символов).'
-    : 'Введите свой пароль.';
-  document.getElementById('confirmField').style.display = first ? '' : 'none';
-  document.getElementById('authSubmit').textContent = first ? 'Создать пароль' : 'Войти';
-  document.getElementById('authPassword').autocomplete = first ? 'new-password' : 'current-password';
-  document.getElementById('authPassword').value = '';
-  document.getElementById('authPassword2').value = '';
-  showAuthError('');
-}
-
-document.getElementById('authTabLogin').addEventListener('click', ()=> setSetupMode(false));
-document.getElementById('authTabSetup').addEventListener('click', ()=> setSetupMode(true));
-
 document.getElementById('authSubmit').addEventListener('click', async ()=>{
   if(!window.crypto?.subtle){
-    showAuthError('Шифрование недоступно. Откройте сайт через https://, не как файл.');
+    showAuthError('Откройте сайт через https://paveline.github.io/finance-dashboard/');
     return;
   }
   if(!supabase){
-    showAuthError('Приложение не инициализировано. Обновите страницу.');
+    showAuthError('Обновите страницу.');
     return;
   }
 
   const password = document.getElementById('authPassword').value;
-  const password2 = document.getElementById('authPassword2').value;
   if(!password){ showAuthError('Введите пароль.'); return; }
 
-  if(isFirstSetup){
-    if(password.length < 6){ showAuthError('Пароль — минимум 6 символов.'); return; }
-    if(password !== password2){ showAuthError('Пароли не совпадают.'); return; }
-    const exists = await vaultExists().catch(e=>{ showAuthError(e.message); return null; });
-    if(exists === null) return;
-    if(exists){ showAuthError('Пароль уже создан. Перейдите на вкладку «Вход».'); return; }
-  }
-
   const btn = document.getElementById('authSubmit');
-  btn.disabled = true;
-  btn.textContent = isFirstSetup ? 'Создание…' : 'Вход…';
+  const prevText = btn.textContent;
+  btn.textContent = 'Вход…';
   showAuthError('');
 
   try {
@@ -587,12 +547,10 @@ document.getElementById('authSubmit').addEventListener('click', async ()=>{
     updateStorageStatus();
     showList();
     document.getElementById('authPassword').value = '';
-    document.getElementById('authPassword2').value = '';
   } catch(e){
-    showAuthError(e.message || 'Ошибка');
+    showAuthError(e.message || 'Ошибка входа');
   }
-  btn.disabled = false;
-  btn.textContent = isFirstSetup ? 'Создать пароль' : 'Войти';
+  btn.textContent = prevText;
 });
 
 document.getElementById('logoutBtn').addEventListener('click', ()=>{
@@ -604,9 +562,6 @@ document.getElementById('logoutBtn').addEventListener('click', ()=>{
 });
 
 document.getElementById('authPassword').addEventListener('keydown', e=>{
-  if(e.key === 'Enter') document.getElementById('authSubmit').click();
-});
-document.getElementById('authPassword2').addEventListener('keydown', e=>{
   if(e.key === 'Enter') document.getElementById('authSubmit').click();
 });
 
@@ -657,22 +612,24 @@ document.getElementById('importFile').addEventListener('change', e=>{
 
 async function initApp(){
   if(!isConfigured()){
-    showAuthError('Supabase не настроен. Заполните config.js.');
+    showAuthError('Supabase не настроен.');
     return;
   }
   if(typeof window.supabase === 'undefined'){
-    showAuthError('Не загрузилась библиотека Supabase. Обновите страницу.');
+    showAuthError('Обновите страницу.');
     return;
   }
   supabase = window.supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
+
   try {
     const exists = await vaultExists();
-    setSetupMode(!exists);
+    document.getElementById('setupHint').style.display = exists ? 'none' : '';
+    document.getElementById('authSubmit').style.display = exists ? '' : 'none';
+    document.getElementById('authPassword').disabled = !exists;
+    if(exists) document.getElementById('authPassword').focus();
   } catch(e){
     showAuthError(e.message);
-    setSetupMode(true);
   }
-  document.getElementById('authPassword').focus();
 }
 
 function fmt(n){ return (Number(n)||0).toLocaleString('ru-RU'); }
