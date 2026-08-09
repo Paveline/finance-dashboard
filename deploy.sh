@@ -19,13 +19,11 @@ fi
 USER=$("$GH" api user --jq .login)
 echo "→ GitHub: $USER"
 
-if ! "$GH" repo view "$USER/finance-dashboard" &>/dev/null; then
-  "$GH" repo create finance-dashboard --private --source=. --remote=origin --push
-else
-  git push -u origin main 2>/dev/null || git push origin main
-fi
+git push -u origin main 2>/dev/null || git push origin main
 
-"$GH" repo edit "$USER/finance-dashboard" --enable-pages --pages-branch main --pages-path /
+"$GH" api repos/"$USER"/finance-dashboard/pages -X POST \
+  -f source[branch]=main -f source[path]=/ 2>/dev/null \
+  || "$GH" repo edit "$USER/finance-dashboard" --enable-pages --pages-branch main --pages-path /
 echo ""
 echo "✓ Готово! Сайт будет доступен через 1–2 минуты:"
 echo "  https://$USER.github.io/finance-dashboard/"
