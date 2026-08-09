@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Одноразовая настройка пароля (запустить один раз на компьютере):
- *   node setup-password.mjs
+ * Настройка и смена пароля (локально, один раз):
+ *   node setup-password.mjs              — первичная настройка
+ *   node setup-password.mjs --change     — сменить пароль (данные сохранятся)
  */
 import { readFileSync } from 'fs';
 import { createInterface } from 'readline';
@@ -26,14 +27,14 @@ function randomSalt() {
   return bufToB64(crypto.getRandomValues(new Uint8Array(16)));
 }
 
-async function deriveKey(password, saltB64) {
+async function deriveKey(password, saltB64, ops = ['encrypt']) {
   const salt = Buffer.from(saltB64, 'base64');
   const keyMaterial = await crypto.subtle.importKey(
     'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']
   );
   return crypto.subtle.deriveKey(
     { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
-    keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['encrypt']
+    keyMaterial, { name: 'AES-GCM', length: 256 }, false, ops
   );
 }
 
@@ -46,6 +47,14 @@ async function encryptJSON(key, obj) {
   combined.set(iv);
   combined.set(new Uint8Array(ct), iv.length);
   return bufToB64(combined);
+}
+
+async function decryptJSON(key, ciphertextB64) {
+  const combined = Buffer.from(ciphertextB64, 'base64');
+  const dec = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: combined.slice(0, 12) }, key, combined.slice(12)
+  );
+  return JSON.parse(new TextDecoder().decode(dec));
 }
 
 function ask(question, hidden = false) {
@@ -74,52 +83,94 @@ function ask(question, hidden = false) {
   });
 }
 
-async function main() {
-  const { url, anonKey } = readConfig();
-  const api = url.replace(/\/$/, '');
+async function askPassword(label) {
+  const pass = await ask(`${label}: `, true);
+  if (pass.length < 6) throw new Error('Пароль — минимум 6 символов');
+  return pass;
+}
 
-  const check = await fetch(`${api}/rest/v1/finance_vault?id=eq.${VAULT_ID}&select=id`, {
+async function fetchVault(api, anonKey) {
+  const res = await fetch(`${api}/rest/v1/finance_vault?id=eq.${VAULT_ID}&select=salt,ciphertext`, {
     headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` }
   });
-  const rows = await check.json();
-  if (Array.isArray(rows) && rows.length > 0) {
-    console.log('→ Пароль уже настроен. Просто войдите на сайте.');
-    return;
-  }
+  if (!res.ok) throw new Error(`Supabase: ${await res.text()}`);
+  const rows = await res.json();
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
 
-  const passArg = process.argv[2];
-  let pass, pass2;
-  if (passArg) {
-    pass = pass2 = passArg;
-  } else {
-    pass = await ask('Придумайте пароль (мин. 6 символов): ', true);
-    pass2 = await ask('Повторите пароль: ', true);
-  }
-  if (pass !== pass2) throw new Error('Пароли не совпали');
-  if (pass.length < 6) throw new Error('Пароль — минимум 6 символов');
-
-  const salt = randomSalt();
-  const key = await deriveKey(pass, salt);
-  const payload = { version: 3, updatedAt: new Date().toISOString(), projects: [], works: [], staff: [] };
-  const ciphertext = await encryptJSON(key, payload);
-
+async function saveVault(api, anonKey, salt, ciphertext) {
   const res = await fetch(`${api}/rest/v1/finance_vault`, {
     method: 'POST',
     headers: {
       apikey: anonKey,
       Authorization: `Bearer ${anonKey}`,
       'Content-Type': 'application/json',
-      Prefer: 'return=minimal'
+      Prefer: 'resolution=merge-duplicates,return=minimal'
     },
-    body: JSON.stringify({ id: VAULT_ID, salt, ciphertext, updated_at: new Date().toISOString() })
+    body: JSON.stringify({
+      id: VAULT_ID,
+      salt,
+      ciphertext,
+      updated_at: new Date().toISOString()
+    })
   });
+  if (!res.ok) throw new Error(`Supabase: ${await res.text()}`);
+}
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Supabase: ${err}`);
+async function setupInitial(api, anonKey) {
+  const existing = await fetchVault(api, anonKey);
+  if (existing) {
+    console.log('→ Пароль уже настроен. Для смены: node setup-password.mjs --change');
+    return;
   }
 
+  const passArg = process.argv.includes('--change') ? null : process.argv[2];
+  let pass, pass2;
+  if (passArg) {
+    pass = pass2 = passArg;
+  } else {
+    pass = await askPassword('Придумайте пароль (мин. 6 символов)');
+    pass2 = await askPassword('Повторите пароль');
+  }
+  if (pass !== pass2) throw new Error('Пароли не совпали');
+
+  const salt = randomSalt();
+  const key = await deriveKey(pass, salt);
+  const payload = { version: 3, updatedAt: new Date().toISOString(), projects: [], works: [], staff: [] };
+  await saveVault(api, anonKey, salt, await encryptJSON(key, payload));
   console.log('✓ Пароль сохранён. Входите на сайте с этим паролем.');
+}
+
+async function changePassword(api, anonKey) {
+  const existing = await fetchVault(api, anonKey);
+  if (!existing) throw new Error('Хранилище не найдено. Сначала: node setup-password.mjs');
+
+  const oldPass = await askPassword('Текущий пароль');
+  const oldKey = await deriveKey(oldPass, existing.salt, ['decrypt']);
+  let payload;
+  try {
+    payload = await decryptJSON(oldKey, existing.ciphertext);
+  } catch {
+    throw new Error('Неверный текущий пароль');
+  }
+
+  const newPass = await askPassword('Новый пароль');
+  const newPass2 = await askPassword('Повторите новый пароль');
+  if (newPass !== newPass2) throw new Error('Новые пароли не совпали');
+
+  const salt = randomSalt();
+  const newKey = await deriveKey(newPass, salt);
+  await saveVault(api, anonKey, salt, await encryptJSON(newKey, payload));
+  console.log('✓ Пароль изменён. Входите на сайте с новым паролем.');
+}
+
+async function main() {
+  const { url, anonKey } = readConfig();
+  const api = url.replace(/\/$/, '');
+  const isChange = process.argv.includes('--change');
+
+  if (isChange) await changePassword(api, anonKey);
+  else await setupInitial(api, anonKey);
 }
 
 main().catch((e) => { console.error('Ошибка:', e.message); process.exit(1); });

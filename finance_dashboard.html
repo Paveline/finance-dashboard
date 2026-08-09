@@ -149,6 +149,7 @@
   .auth-tab.active{background:var(--accent);border-color:var(--accent);color:white;font-weight:500;}
   .auth-submit{width:100%;margin-top:8px;min-height:42px;}
   .auth-security{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-top:20px;font-size:12px;color:var(--muted);line-height:1.6;}
+  .screen-hidden{display:none !important;}
 
   footer{padding:20px 32px;color:var(--muted);font-size:12px;text-align:center;}
 
@@ -181,7 +182,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Финансы">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="config.js?v=5"></script>
+<script src="config.js?v=6"></script>
 </head>
 <body>
 
@@ -202,7 +203,7 @@
   </div>
 </div>
 
-<div id="appShell" hidden>
+<div id="appShell" class="screen-hidden">
 <header>
   <div>
     <h1 id="homeLink">Учёт финансов по проектам</h1>
@@ -231,7 +232,7 @@
   </div>
 
   <!-- PROJECT DETAIL VIEW -->
-  <div id="projectView" hidden>
+  <div id="projectView" style="display:none">
     <button class="back-btn ghost" id="backBtn">← Все проекты</button>
 
     <div class="project-header">
@@ -501,15 +502,15 @@ function showAuthError(msg){
 }
 
 function showApp(){
-  document.getElementById('authScreen').hidden = true;
-  document.getElementById('appShell').hidden = false;
+  document.getElementById('authScreen').classList.add('screen-hidden');
+  document.getElementById('appShell').classList.remove('screen-hidden');
 }
 
 function showAuth(){
   cryptoKey = null;
   vaultSalt = null;
-  document.getElementById('authScreen').hidden = false;
-  document.getElementById('appShell').hidden = true;
+  document.getElementById('authScreen').classList.remove('screen-hidden');
+  document.getElementById('appShell').classList.add('screen-hidden');
 }
 
 document.getElementById('authSubmit').addEventListener('click', async ()=>{
@@ -658,8 +659,8 @@ let currentMonth = null;
 /* ---------- Views ---------- */
 function showList(){
   currentProjectId = null; currentMonth = null;
-  document.getElementById('listView').hidden = false;
-  document.getElementById('projectView').hidden = true;
+  document.getElementById('listView').style.display = 'block';
+  document.getElementById('projectView').style.display = 'none';
   renderList();
 }
 function showProject(id){
@@ -667,8 +668,8 @@ function showProject(id){
   const p = projectById(id);
   if(!p) return showList();
   currentMonth = p.months[p.months.length-1] || null;
-  document.getElementById('listView').hidden = true;
-  document.getElementById('projectView').hidden = false;
+  document.getElementById('listView').style.display = 'none';
+  document.getElementById('projectView').style.display = 'block';
   renderProject();
 }
 
