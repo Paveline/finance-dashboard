@@ -206,7 +206,7 @@
     </div>
     <button type="button" class="primary auth-submit" id="authSubmit">Войти</button>
     <div class="auth-security">
-      Данные шифруются AES-256 на вашем устройстве перед отправкой на сервер. Даже администратор базы видит только зашифрованный текст. Без вашего пароля прочитать их невозможно.
+      Доступ только по паролю. Данные хранятся в Supabase и недоступны другим пользователям.
     </div>
   </div>
 </div>
@@ -381,8 +381,6 @@ function isConfigured(){
 }
 
 let supabase = null;
-let cryptoKey = null;
-let vaultSalt = null;
 let saveTimer = null;
 let saveState = 'idle';
 let lastSavedAt = null;
@@ -416,85 +414,34 @@ function applyPayload(data){
 
 function emptyPayload(){ projects=[]; works=[]; staff=[]; }
 
-/* ========== ENCRYPTION (AES-256-GCM + PBKDF2) ========== */
-function bufToB64(buf){
-  return btoa(String.fromCharCode(...new Uint8Array(buf)));
-}
-function b64ToBuf(b64){
-  return Uint8Array.from(atob(b64), c=>c.charCodeAt(0));
-}
-function randomSalt(){
-  return bufToB64(crypto.getRandomValues(new Uint8Array(16)));
-}
-
-async function deriveKey(password, saltB64){
-  const salt = b64ToBuf(saltB64);
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey(
-    { name:'PBKDF2', salt, iterations:100000, hash:'SHA-256' },
-    keyMaterial,
-    { name:'AES-GCM', length:256 },
-    false,
-    ['encrypt','decrypt']
-  );
-}
-
-async function encryptJSON(key, obj){
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const enc = new TextEncoder();
-  const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, enc.encode(JSON.stringify(obj)));
-  const combined = new Uint8Array(iv.length + ct.byteLength);
-  combined.set(iv);
-  combined.set(new Uint8Array(ct), iv.length);
-  return bufToB64(combined);
-}
-
-async function decryptJSON(key, ciphertextB64){
-  const combined = b64ToBuf(ciphertextB64);
-  const iv = combined.slice(0, 12);
-  const ct = combined.slice(12);
-  const dec = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ct);
-  return JSON.parse(new TextDecoder().decode(dec));
-}
-
-/* ========== VAULT (Supabase) ========== */
-async function loadVault(password){
+/* ========== VAULT (Supabase, RLS) ========== */
+async function loadVault(){
   const { data: { user } } = await supabase.auth.getUser();
   if(!user) throw new Error('Не авторизован');
 
-  const { data, error } = await supabase.from('finance_vault').select('salt,ciphertext,updated_at').eq('user_id', user.id).maybeSingle();
-  if(error) throw new Error(error.message);
+  const { data, error } = await supabase.from('finance_vault').select('data,updated_at').eq('user_id', user.id).maybeSingle();
+  if(error){
+    if(/finance_vault|schema cache|PGRST/i.test(error.message))
+      throw new Error('Таблица не создана. Supabase → SQL Editor → выполните supabase-setup.sql');
+    throw new Error(error.message);
+  }
 
   if(!data){
-    vaultSalt = randomSalt();
-    cryptoKey = await deriveKey(password, vaultSalt);
     emptyPayload();
     await pushVault();
     return;
   }
-
-  vaultSalt = data.salt;
-  cryptoKey = await deriveKey(password, vaultSalt);
-  try {
-    const payload = await decryptJSON(cryptoKey, data.ciphertext);
-    applyPayload(payload);
-    lastSavedAt = data.updated_at;
-  } catch(e){
-    throw new Error('Неверный пароль или повреждённые данные');
-  }
+  applyPayload(data.data || { projects:[], works:[], staff:[] });
+  lastSavedAt = data.updated_at;
 }
 
 async function pushVault(){
-  if(!cryptoKey || !vaultSalt) return;
   const { data: { user } } = await supabase.auth.getUser();
   if(!user) return;
 
-  const ciphertext = await encryptJSON(cryptoKey, getPayload());
   const { error } = await supabase.from('finance_vault').upsert({
     user_id: user.id,
-    salt: vaultSalt,
-    ciphertext,
+    data: getPayload(),
     updated_at: new Date().toISOString()
   });
   if(error) throw new Error(error.message);
@@ -507,7 +454,8 @@ function scheduleSave(){
 }
 
 async function doSave(){
-  if(!cryptoKey) return;
+  const { data: { user } } = await supabase.auth.getUser();
+  if(!user) return;
   saveState = 'saving';
   updateStorageStatus();
   try {
@@ -531,8 +479,8 @@ function updateStorageStatus(){
   if(!line) return;
   const labels = { idle:'готово', saving:'сохранение…', saved:'сохранено', error:'ошибка сохранения' };
   const dotCls = saveState==='error' ? 'error' : saveState==='saving' ? 'warn' : '';
-  line.innerHTML = `<span class="storage-status ${dotCls}"><span class="dot"></span>Зашифровано · ${labels[saveState]||saveState}</span>`;
-  if(footer) footer.textContent = 'Данные шифруются на устройстве (AES-256) и хранятся в облаке. Доступ только по вашему логину и паролю.';
+  line.innerHTML = `<span class="storage-status ${dotCls}"><span class="dot"></span>Облако · ${labels[saveState]||saveState}</span>`;
+  if(footer) footer.textContent = 'Данные защищены: вход по паролю + изоляция в Supabase. Доступ только у вас.';
 }
 
 /* ========== AUTH UI ========== */
@@ -548,19 +496,19 @@ function showApp(){
 }
 
 function showAuth(){
-  cryptoKey = null;
-  vaultSalt = null;
   document.getElementById('authScreen').style.display = '';
   document.getElementById('appShell').style.display = 'none';
 }
 
 function authErrorMessage(e){
   const msg = (e?.message || e || '').toLowerCase();
-  if(msg.includes('email_provider_disabled') || msg.includes('email logins are disabled') || msg.includes('email signups are disabled'))
-    return 'В Supabase отключён Email-провайдер. Authentication → Providers → Email → включите Enable Email provider → Save.';
-  if(msg.includes('invalid login') || msg.includes('invalid credentials')) return 'Неверный пароль';
-  if(msg.includes('email not confirmed')) return 'Аккаунт не подтверждён. В Supabase: Users → ваш пользователь → подтвердите email или включите Auto Confirm.';
-  if(msg.includes('network') || msg.includes('fetch')) return 'Нет связи с сервером. Проверьте интернет.';
+  if(msg.includes('email_provider_disabled') || msg.includes('email logins are disabled'))
+    return 'В Supabase включите Email: Authentication → Providers → Email → Enable.';
+  if(msg.includes('invalid login') || msg.includes('invalid credentials'))
+    return `Неверный пароль. Supabase → Authentication → Users → выберите ${ownerEmail()} → Reset password`;
+  if(msg.includes('email not confirmed'))
+    return 'Email не подтверждён. Supabase → Users → включите Auto Confirm User.';
+  if(msg.includes('network') || msg.includes('fetch')) return 'Нет связи с сервером.';
   return e?.message || 'Ошибка входа';
 }
 
@@ -595,13 +543,14 @@ document.getElementById('authSubmit').addEventListener('click', async ()=>{
   try {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if(error) throw error;
-    await loadVault(password);
+    await loadVault();
     saveState = 'saved';
     showApp();
     updateStorageStatus();
     showList();
     document.getElementById('authPassword').value = '';
   } catch(e){
+    await supabase.auth.signOut();
     showAuthError(authErrorMessage(e));
   }
   btn.disabled = false;
@@ -610,10 +559,13 @@ document.getElementById('authSubmit').addEventListener('click', async ()=>{
 
 document.getElementById('logoutBtn').addEventListener('click', async ()=>{
   await supabase.auth.signOut();
-  cryptoKey = null;
   emptyPayload();
   showAuth();
   showAuthError('');
+});
+
+document.getElementById('authPassword').addEventListener('keydown', e=>{
+  if(e.key === 'Enter') document.getElementById('authSubmit').click();
 });
 
 function exportData(){
