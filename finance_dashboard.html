@@ -33,10 +33,34 @@
   .dash-month-bar{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:20px;padding:12px 16px;background:var(--panel);border:1px solid var(--border);border-radius:12px;}
   .dash-month-bar button{min-width:44px;min-height:44px;font-size:18px;padding:0;}
   .dash-month-label{font-size:16px;font-weight:600;min-width:120px;text-align:center;}
+  .analytics-section{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:20px;}
+  .analytics-section h3{margin:0 0 16px;font-size:14px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+  .chart-legend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;font-size:12px;color:var(--muted);}
+  .chart-legend span{display:flex;align-items:center;gap:6px;}
+  .chart-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;}
+  .chart-legend .lg-income i{background:var(--green);}
+  .chart-legend .lg-expense i{background:var(--red);}
+  .chart-legend .lg-profit i{background:var(--accent);}
+  .chart-wrap{overflow-x:auto;padding-bottom:4px;}
+  .chart-bars{display:flex;align-items:flex-end;gap:10px;min-height:180px;padding-top:8px;}
+  .chart-col{flex:1;min-width:52px;max-width:80px;display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .chart-col.active .chart-label{color:var(--accent);font-weight:600;}
+  .chart-bar-group{display:flex;align-items:flex-end;justify-content:center;gap:3px;height:140px;width:100%;}
+  .chart-bar{width:14px;border-radius:4px 4px 0 0;min-height:2px;transition:height .2s;}
+  .chart-bar.income{background:var(--green);}
+  .chart-bar.expense{background:var(--red);}
+  .chart-bar.profit{background:var(--accent);opacity:.85;}
+  .chart-label{font-size:11px;color:var(--muted);text-align:center;white-space:nowrap;}
+  .confirm-msg{color:var(--muted);font-size:14px;line-height:1.5;margin:0 0 20px;}
+  button.danger{background:rgba(255,107,107,.15);border-color:var(--red);color:var(--red);}
+  button.danger:hover{opacity:.9;}
   .project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;}
   .project-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px 20px;cursor:pointer;transition:.15s;}
   .project-card:hover{border-color:#3d4654;background:var(--panel2);}
-  .project-card .pname{font-size:15px;font-weight:600;margin-bottom:12px;}
+  .project-card .card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:12px;}
+  .project-card .pname{font-size:15px;font-weight:600;flex:1;min-width:0;word-break:break-word;}
+  .project-card .card-actions{display:flex;gap:4px;flex-shrink:0;}
+  .project-card .card-actions button{padding:4px 8px;font-size:14px;min-height:32px;}
   .project-card .pmeta{font-size:12px;color:var(--muted);margin-bottom:14px;}
   .project-card .phero{font-size:22px;font-weight:600;margin-bottom:4px;}
   .project-card .phero-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
@@ -226,6 +250,7 @@
 
   <!-- LIST VIEW -->
   <div id="listView">
+    <div id="analyticsSection"></div>
     <div id="overallSummary"></div>
     <div class="dash-month-bar">
       <button type="button" class="ghost" id="listMonthPrev" aria-label="Предыдущий месяц">←</button>
@@ -250,7 +275,6 @@
         </div>
         <div class="row-actions">
           <button id="editProjectBtn">Изменить проект</button>
-          <button class="danger" id="deleteProjectBtn">Удалить проект</button>
         </div>
       </div>
       <div class="comment" id="pdComment"></div>
@@ -324,7 +348,7 @@
       <label>Название проекта</label>
       <input type="text" id="mProjectName" placeholder="Например: ООО Клиент А">
     </div>
-    <div class="field">
+    <div class="field" id="newProjectMonthField">
       <label>Первый месяц учёта</label>
       <div class="month-select-row" id="newProjectMonthRow"></div>
     </div>
@@ -332,9 +356,10 @@
       <label>Комментарий</label>
       <textarea id="mProjectComment" placeholder="Необязательно"></textarea>
     </div>
-    <div class="modal-actions">
-      <button class="ghost" id="mCancel">Отмена</button>
-      <button class="primary" id="mSave">Сохранить</button>
+    <div class="modal-actions" id="projectModalActions">
+      <button type="button" class="danger" id="mDeleteProject" style="display:none;margin-right:auto;">Удалить проект</button>
+      <button type="button" class="ghost" id="mCancel">Отмена</button>
+      <button type="button" class="primary" id="mSave">Сохранить</button>
     </div>
   </div>
 </div>
@@ -366,6 +391,49 @@
     <div class="modal-actions">
       <button class="ghost" id="copyMonthCancel">Отмена</button>
       <button class="primary" id="copyMonthSave">Скопировать</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: copy project month (dashboard) -->
+<div class="modal-overlay" id="copyProjectModal">
+  <div class="modal">
+    <h3>Скопировать проект</h3>
+    <p class="confirm-msg" id="copyProjectHint"></p>
+    <div class="field">
+      <label>Скопировать из месяца</label>
+      <div class="month-select-row" id="copyProjectSourceRow"></div>
+    </div>
+    <div class="field">
+      <label>Скопировать в месяц</label>
+      <div class="month-select-row" id="copyProjectTargetRow"></div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="ghost" id="copyProjectCancel">Отмена</button>
+      <button type="button" class="primary" id="copyProjectSave">Скопировать</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: confirm -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal">
+    <h3 id="confirmTitle">Подтвердите действие</h3>
+    <p class="confirm-msg" id="confirmMessage"></p>
+    <div class="modal-actions">
+      <button type="button" class="ghost" id="confirmCancel">Отмена</button>
+      <button type="button" class="danger" id="confirmOk">Подтвердить</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: alert -->
+<div class="modal-overlay" id="alertModal">
+  <div class="modal">
+    <h3 id="alertTitle">Внимание</h3>
+    <p class="confirm-msg" id="alertMessage"></p>
+    <div class="modal-actions">
+      <button type="button" class="primary" id="alertOk">OK</button>
     </div>
   </div>
 </div>
@@ -604,7 +672,70 @@ function shiftMonth(ym, delta){
 function projectsForMonth(month){
   return projects.filter(p=>(p.months||[]).includes(month));
 }
+function getAllMonths(){
+  const set = new Set();
+  projects.forEach(p=>(p.months||[]).forEach(m=>set.add(m)));
+  return [...set].sort();
+}
+function monthTotals(ym){
+  const ids = new Set(projectsForMonth(ym).map(p=>p.id));
+  const mw = works.filter(w=>w.month===ym && ids.has(w.projectId));
+  const ms = staff.filter(s=>s.month===ym && ids.has(s.projectId));
+  const income = mw.reduce((s,w)=>s+Number(w.cost||0),0);
+  const expense = ms.reduce((s,x)=>s+Number(x.amount||0),0);
+  return { income, expense, profit: income - expense };
+}
+function copyProjectMonthData(projectId, sourceMonth, targetMonth){
+  if(sourceMonth === targetMonth) return { ok:false, msg:'Выберите другой месяц.' };
+  const p = projectById(projectId);
+  if(!p) return { ok:false, msg:'Проект не найден.' };
+  if(!(p.months||[]).includes(sourceMonth)) return { ok:false, msg:'В исходном месяце нет этого проекта.' };
+  if(!p.months.includes(targetMonth)){ p.months.push(targetMonth); p.months.sort(); }
+  works.filter(w=>w.projectId===projectId && w.month===sourceMonth).forEach(w=>{
+    works.push({id:cid(), projectId, month:targetMonth, description:w.description, cost:w.cost, paidByClient:0, comment:w.comment});
+  });
+  staff.filter(s=>s.projectId===projectId && s.month===sourceMonth).forEach(s=>{
+    staff.push({id:cid(), projectId, month:targetMonth, name:s.name, amount:s.amount, paid:0, comment:s.comment});
+  });
+  saveProjects(); saveWorks(); saveStaff();
+  return { ok:true };
+}
 function projectById(id){ return projects.find(p=>p.id===id); }
+
+/* ---------- Dialogs ---------- */
+let confirmResolve = null;
+const confirmModal = document.getElementById('confirmModal');
+const alertModal = document.getElementById('alertModal');
+
+function showConfirm(message, {title='Подтвердите действие', okText='Подтвердить', danger=true}={}){
+  return new Promise(resolve=>{
+    confirmResolve = resolve;
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmMessage').textContent = message;
+    const okBtn = document.getElementById('confirmOk');
+    okBtn.textContent = okText;
+    okBtn.className = danger ? 'danger' : 'primary';
+    confirmModal.classList.add('open');
+  });
+}
+function showAlert(message, title='Внимание'){
+  return new Promise(resolve=>{
+    document.getElementById('alertTitle').textContent = title;
+    document.getElementById('alertMessage').textContent = message;
+    alertModal.classList.add('open');
+    const done = ()=>{ alertModal.classList.remove('open'); document.getElementById('alertOk').removeEventListener('click', done); resolve(); };
+    document.getElementById('alertOk').addEventListener('click', done);
+  });
+}
+document.getElementById('confirmCancel').addEventListener('click', ()=>{ confirmModal.classList.remove('open'); if(confirmResolve) confirmResolve(false); confirmResolve=null; });
+document.getElementById('confirmOk').addEventListener('click', ()=>{ confirmModal.classList.remove('open'); if(confirmResolve) confirmResolve(true); confirmResolve=null; });
+
+function deleteProjectById(id){
+  projects = projects.filter(p=>p.id!==id);
+  works = works.filter(w=>w.projectId!==id);
+  staff = staff.filter(s=>s.projectId!==id);
+  saveProjects(); saveWorks(); saveStaff();
+}
 
 /* ---------- Money input formatting ---------- */
 function fmtInput(n){ n = Number(n)||0; return n===0 ? '' : n.toLocaleString('ru-RU'); }
@@ -680,6 +811,8 @@ document.getElementById('listMonthNext').addEventListener('click', ()=>{
 document.getElementById('newProjectMonthRow').innerHTML = monthSelectHTML('newProject');
 document.getElementById('addMonthRow').innerHTML = monthSelectHTML('addMonth');
 document.getElementById('copyMonthRow').innerHTML = monthSelectHTML('copyMonth');
+document.getElementById('copyProjectSourceRow').innerHTML = monthSelectHTML('copyProjectSource');
+document.getElementById('copyProjectTargetRow').innerHTML = monthSelectHTML('copyProjectTarget');
 
 /* ---------- List view render ---------- */
 function projectStats(p, month){
@@ -742,9 +875,56 @@ function renderOverallSummary(month){
     </div>`;
 }
 
+function renderAnalytics(){
+  ensureListMonth();
+  const el = document.getElementById('analyticsSection');
+  const months = getAllMonths();
+  if(months.length === 0){ el.innerHTML = ''; return; }
+
+  const slice = months.slice(-12);
+  const data = slice.map(m=>({ m, ...monthTotals(m) }));
+  const maxVal = Math.max(...data.flatMap(d=>[d.income, d.expense, Math.abs(d.profit)]), 1);
+
+  el.innerHTML = `
+    <div class="analytics-section">
+      <h3>Динамика по месяцам</h3>
+      <div class="chart-legend">
+        <span class="lg-income"><i></i> Доход (стоимость работ)</span>
+        <span class="lg-expense"><i></i> Расход (начислено)</span>
+        <span class="lg-profit"><i></i> Прибыль</span>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-bars">
+          ${data.map(d=>{
+            const ih = Math.round(d.income / maxVal * 100);
+            const eh = Math.round(d.expense / maxVal * 100);
+            const ph = Math.round(Math.max(d.profit, 0) / maxVal * 100);
+            const active = d.m === listMonth ? ' active' : '';
+            return `<div class="chart-col${active}" data-month="${d.m}" title="${monthLabel(d.m)}: доход ${fmt(d.income)} ₽, расход ${fmt(d.expense)} ₽">
+              <div class="chart-bar-group">
+                <div class="chart-bar income" style="height:${ih}%"></div>
+                <div class="chart-bar expense" style="height:${eh}%"></div>
+                <div class="chart-bar profit" style="height:${ph}%"></div>
+              </div>
+              <div class="chart-label">${monthLabel(d.m)}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>`;
+
+  el.querySelectorAll('.chart-col').forEach(col=>{
+    col.addEventListener('click', ()=>{
+      listMonth = col.getAttribute('data-month');
+      renderList();
+    });
+  });
+}
+
 function renderList(){
   ensureListMonth();
   document.getElementById('listMonthLabel').textContent = monthLabel(listMonth);
+  renderAnalytics();
   const visible = projectsForMonth(listMonth);
   renderOverallSummary(listMonth);
   const grid = document.getElementById('projectGrid');
@@ -762,7 +942,12 @@ function renderList(){
     const owedStaff = Math.max(st.staffOwed - st.staffPaid, 0);
     return `
     <div class="project-card" data-id="${p.id}">
-      <div class="pname">${esc(p.name)}</div>
+      <div class="card-top">
+        <div class="pname">${esc(p.name)}</div>
+        <div class="card-actions">
+          <button type="button" class="ghost card-copy" data-id="${p.id}" title="Скопировать в другой месяц">⧉</button>
+        </div>
+      </div>
       <div class="phero-label">Потенциальная прибыль</div>
       <div class="phero" style="color:${st.profitPotential>=0?'var(--green)':'var(--red)'}">${fmt(st.profitPotential)} ₽</div>
       <div class="pmeta" style="margin-top:4px;">Факт: ${fmt(st.profitFact)} ₽</div>
@@ -775,6 +960,12 @@ function renderList(){
   }).join('');
   grid.querySelectorAll('.project-card').forEach(card=>{
     card.addEventListener('click', ()=> showProject(card.getAttribute('data-id')));
+  });
+  grid.querySelectorAll('.card-copy').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      e.stopPropagation();
+      openCopyProjectModal(btn.getAttribute('data-id'));
+    });
   });
 }
 
@@ -802,10 +993,11 @@ function renderProject(){
       });
     });
     tabs.querySelectorAll('.mt-del').forEach(delBtn=>{
-      delBtn.addEventListener('click', (e)=>{
+      delBtn.addEventListener('click', async (e)=>{
         e.stopPropagation();
         const m = delBtn.getAttribute('data-del-month');
-        if(!confirm(`Удалить месяц ${monthLabel(m)}? Все работы и выплаты за этот месяц будут удалены.`)) return;
+        const ok = await showConfirm(`Удалить месяц ${monthLabel(m)}? Все работы и выплаты за этот месяц будут удалены.`, {title:'Удалить месяц', okText:'Удалить'});
+        if(!ok) return;
         const pr = projectById(currentProjectId);
         pr.months = (pr.months||[]).filter(x=>x!==m);
         works = works.filter(w=>!(w.projectId===currentProjectId && w.month===m));
@@ -813,6 +1005,7 @@ function renderProject(){
         saveProjects(); saveWorks(); saveStaff();
         if(currentMonth===m) currentMonth = null;
         renderProject();
+        renderList();
       });
     });
   }
@@ -900,9 +1093,11 @@ function renderWorks(){
     });
   });
   body.querySelectorAll('[data-action="delete"]').forEach(btn=>{
-    btn.addEventListener('click', e=>{
+    btn.addEventListener('click', async e=>{
       const id = e.target.closest('tr').getAttribute('data-id');
-      if(confirm('Удалить запись о работе?')){ works = works.filter(w=>w.id!==id); saveWorks(); renderWorks(); renderSummary(); }
+      const ok = await showConfirm('Удалить запись о работе?', {title:'Удалить работу', okText:'Удалить'});
+      if(!ok) return;
+      works = works.filter(w=>w.id!==id); saveWorks(); renderWorks(); renderSummary();
     });
   });
 }
@@ -952,24 +1147,26 @@ function renderStaff(){
     });
   });
   body.querySelectorAll('[data-action="delete"]').forEach(btn=>{
-    btn.addEventListener('click', e=>{
+    btn.addEventListener('click', async e=>{
       const id = e.target.closest('tr').getAttribute('data-id');
-      if(confirm('Удалить запись о выплате?')){ staff = staff.filter(s=>s.id!==id); saveStaff(); renderStaff(); renderSummary(); }
+      const ok = await showConfirm('Удалить запись о выплате?', {title:'Удалить выплату', okText:'Удалить'});
+      if(!ok) return;
+      staff = staff.filter(s=>s.id!==id); saveStaff(); renderStaff(); renderSummary();
     });
   });
 }
 
 /* ---------- Add work / staff ---------- */
-document.getElementById('addWorkBtn').addEventListener('click', ()=>{
-  if(!currentMonth){ alert('Сначала добавьте месяц.'); return; }
+document.getElementById('addWorkBtn').addEventListener('click', async ()=>{
+  if(!currentMonth){ await showAlert('Сначала добавьте месяц.'); return; }
   works.push({id:cid(), projectId:currentProjectId, month:currentMonth, description:'', cost:0, paidByClient:0, comment:''});
   saveWorks(); renderWorks(); renderSummary();
   const body = document.getElementById('worksBody');
   const lastInput = body.querySelector('tr:last-child input');
   if(lastInput) lastInput.focus();
 });
-document.getElementById('addStaffBtn').addEventListener('click', ()=>{
-  if(!currentMonth){ alert('Сначала добавьте месяц.'); return; }
+document.getElementById('addStaffBtn').addEventListener('click', async ()=>{
+  if(!currentMonth){ await showAlert('Сначала добавьте месяц.'); return; }
   staff.push({id:cid(), projectId:currentProjectId, month:currentMonth, name:'', amount:0, paid:0, comment:''});
   saveStaff(); renderStaff(); renderSummary();
   const body = document.getElementById('staffBody');
@@ -981,8 +1178,14 @@ document.getElementById('addStaffBtn').addEventListener('click', ()=>{
 const projectModal = document.getElementById('projectModal');
 let editingProjectId = null;
 
+function setProjectModalMode(mode){
+  document.getElementById('newProjectMonthField').style.display = mode === 'create' ? '' : 'none';
+  document.getElementById('mDeleteProject').style.display = mode === 'edit' ? '' : 'none';
+}
+
 document.getElementById('addProjectBtn').addEventListener('click', ()=>{
   editingProjectId = null;
+  setProjectModalMode('create');
   document.getElementById('projectModalTitle').textContent = 'Новый проект';
   document.getElementById('mProjectName').value = '';
   document.getElementById('mProjectComment').value = '';
@@ -996,21 +1199,20 @@ document.getElementById('editProjectBtn').addEventListener('click', ()=>{
   const p = projectById(currentProjectId);
   if(!p) return;
   editingProjectId = p.id;
+  setProjectModalMode('edit');
   document.getElementById('projectModalTitle').textContent = 'Изменить проект';
   document.getElementById('mProjectName').value = p.name;
   document.getElementById('mProjectComment').value = p.comment || '';
-  setMonthSelectValue('newProject', (p.months && p.months[0]) || null);
   projectModal.classList.add('open');
   setTimeout(()=> document.getElementById('mProjectName').focus(), 50);
 });
 
 document.getElementById('mCancel').addEventListener('click', ()=> projectModal.classList.remove('open'));
 
-document.getElementById('mSave').addEventListener('click', ()=>{
+document.getElementById('mSave').addEventListener('click', async ()=>{
   const name = document.getElementById('mProjectName').value.trim();
   const comment = document.getElementById('mProjectComment').value.trim();
-  const month = getMonthSelectValue('newProject');
-  if(!name){ alert('Введите название проекта.'); return; }
+  if(!name){ await showAlert('Введите название проекта.'); return; }
 
   if(editingProjectId){
     const p = projectById(editingProjectId);
@@ -1018,23 +1220,27 @@ document.getElementById('mSave').addEventListener('click', ()=>{
     saveProjects();
     projectModal.classList.remove('open');
     renderProject();
+    renderList();
   } else {
-    if(!month){ alert('Выберите первый месяц учёта.'); return; }
+    const month = getMonthSelectValue('newProject');
+    if(!month){ await showAlert('Выберите первый месяц учёта.'); return; }
     const p = {id: cid(), name, comment, months:[month]};
     projects.push(p);
     saveProjects();
     projectModal.classList.remove('open');
+    listMonth = month;
     showProject(p.id);
   }
 });
 
-document.getElementById('deleteProjectBtn').addEventListener('click', ()=>{
-  if(!confirm('Удалить проект целиком, включая все работы и выплаты по всем месяцам?')) return;
-  const id = currentProjectId;
-  projects = projects.filter(p=>p.id!==id);
-  works = works.filter(w=>w.projectId!==id);
-  staff = staff.filter(s=>s.projectId!==id);
-  saveProjects(); saveWorks(); saveStaff();
+document.getElementById('mDeleteProject').addEventListener('click', async ()=>{
+  const p = projectById(editingProjectId);
+  if(!p) return;
+  const ok = await showConfirm(`Удалить проект «${p.name}» целиком? Все работы и выплаты по всем месяцам будут удалены.`, {title:'Удалить проект', okText:'Удалить'});
+  if(!ok) return;
+  deleteProjectById(editingProjectId);
+  projectModal.classList.remove('open');
+  editingProjectId = null;
   showList();
 });
 
@@ -1045,13 +1251,13 @@ document.getElementById('addMonthBtn').addEventListener('click', ()=>{
   monthModal.classList.add('open');
 });
 document.getElementById('monthCancel').addEventListener('click', ()=> monthModal.classList.remove('open'));
-document.getElementById('monthSave').addEventListener('click', ()=>{
+document.getElementById('monthSave').addEventListener('click', async ()=>{
   const m = getMonthSelectValue('addMonth');
   if(!m) return;
   const p = projectById(currentProjectId);
   if(!p) return;
   if(!p.months) p.months = [];
-  if(p.months.includes(m)){ alert('Такой месяц уже добавлен.'); return; }
+  if(p.months.includes(m)){ await showAlert('Такой месяц уже добавлен.'); return; }
   p.months.push(m);
   p.months.sort();
   saveProjects();
@@ -1063,8 +1269,8 @@ document.getElementById('monthSave').addEventListener('click', ()=>{
 
 /* ---------- Copy month modal ---------- */
 const copyMonthModal = document.getElementById('copyMonthModal');
-document.getElementById('copyMonthBtn').addEventListener('click', ()=>{
-  if(!currentMonth){ alert('Сначала выберите месяц, который нужно скопировать.'); return; }
+document.getElementById('copyMonthBtn').addEventListener('click', async ()=>{
+  if(!currentMonth){ await showAlert('Сначала выберите месяц, который нужно скопировать.'); return; }
   document.getElementById('copyMonthSourceLabel').textContent = `Копируются работы и сотрудники из месяца: ${monthLabel(currentMonth)}. Суммы оплат обнулятся — суммы стоимости/начисления останутся.`;
   const [y,m] = currentMonth.split('-');
   let nextM = parseInt(m,10)+1, nextY = parseInt(y,10);
@@ -1073,28 +1279,48 @@ document.getElementById('copyMonthBtn').addEventListener('click', ()=>{
   copyMonthModal.classList.add('open');
 });
 document.getElementById('copyMonthCancel').addEventListener('click', ()=> copyMonthModal.classList.remove('open'));
-document.getElementById('copyMonthSave').addEventListener('click', ()=>{
+document.getElementById('copyMonthSave').addEventListener('click', async ()=>{
   const target = getMonthSelectValue('copyMonth');
   if(!target) return;
-  if(target === currentMonth){ alert('Выберите другой месяц.'); return; }
-  const p = projectById(currentProjectId);
-  if(!p) return;
-  if(!p.months) p.months = [];
-  if(!p.months.includes(target)) p.months.push(target);
-
-  const sourceWorks = works.filter(w=>w.projectId===currentProjectId && w.month===currentMonth);
-  sourceWorks.forEach(w=>{
-    works.push({id:cid(), projectId:currentProjectId, month:target, description:w.description, cost:w.cost, paidByClient:0, comment:w.comment});
-  });
-  const sourceStaff = staff.filter(s=>s.projectId===currentProjectId && s.month===currentMonth);
-  sourceStaff.forEach(s=>{
-    staff.push({id:cid(), projectId:currentProjectId, month:target, name:s.name, amount:s.amount, paid:0, comment:s.comment});
-  });
-
-  saveProjects(); saveWorks(); saveStaff();
+  const result = copyProjectMonthData(currentProjectId, currentMonth, target);
+  if(!result.ok){ await showAlert(result.msg); return; }
   currentMonth = target;
   copyMonthModal.classList.remove('open');
   renderProject();
+  renderList();
+});
+
+/* ---------- Copy project from dashboard ---------- */
+const copyProjectModal = document.getElementById('copyProjectModal');
+let copyProjectId = null;
+
+function openCopyProjectModal(projectId){
+  copyProjectId = projectId;
+  const p = projectById(projectId);
+  if(!p) return;
+  const months = (p.months||[]).slice().sort();
+  if(months.length === 0){ showAlert('У проекта нет месяцев учёта.'); return; }
+  ensureListMonth();
+  const source = months.includes(listMonth) ? listMonth : months[months.length-1];
+  document.getElementById('copyProjectHint').textContent = `Проект «${p.name}». Суммы оплат обнулятся, стоимость и начисления сохранятся.`;
+  setMonthSelectValue('copyProjectSource', source);
+  const [y,m] = source.split('-');
+  let nextM = parseInt(m,10)+1, nextY = parseInt(y,10);
+  if(nextM>12){ nextM=1; nextY++; }
+  setMonthSelectValue('copyProjectTarget', nextY+'-'+String(nextM).padStart(2,'0'));
+  copyProjectModal.classList.add('open');
+}
+
+document.getElementById('copyProjectCancel').addEventListener('click', ()=> copyProjectModal.classList.remove('open'));
+document.getElementById('copyProjectSave').addEventListener('click', async ()=>{
+  const source = getMonthSelectValue('copyProjectSource');
+  const target = getMonthSelectValue('copyProjectTarget');
+  if(!source || !target) return;
+  const result = copyProjectMonthData(copyProjectId, source, target);
+  if(!result.ok){ await showAlert(result.msg); return; }
+  copyProjectModal.classList.remove('open');
+  listMonth = target;
+  renderList();
 });
 
 /* ---------- Init ---------- */
