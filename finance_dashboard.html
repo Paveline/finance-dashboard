@@ -103,8 +103,9 @@
   th{background:var(--panel2);color:var(--muted);font-weight:500;text-transform:uppercase;font-size:11px;letter-spacing:.03em;}
   tr:last-child td{border-bottom:none;}
   tr:hover td{background:#1a1e27;}
-  td input{width:100%;border:1px solid transparent;background:transparent;padding:6px 8px;font-size:13px;color:var(--text);}
+  td input{width:100%;min-width:0;border:1px solid transparent;background:transparent;padding:6px 8px;font-size:13px;color:var(--text);}
   td input:hover, td input:focus{border-color:var(--border);background:var(--panel2);outline:none;}
+  td[data-label]{position:relative;}
   .status-pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;}
   .status-paid{background:rgba(62,207,142,.15);color:var(--green);}
   .status-partial{background:rgba(255,200,87,.15);color:var(--yellow);}
@@ -148,7 +149,6 @@
   .auth-tab{flex:1;padding:10px;border:1px solid var(--border);background:var(--panel2);border-radius:8px;cursor:pointer;font-size:14px;text-align:center;}
   .auth-tab.active{background:var(--accent);border-color:var(--accent);color:white;font-weight:500;}
   .auth-submit{width:100%;margin-top:8px;min-height:42px;}
-  .auth-security{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-top:20px;font-size:12px;color:var(--muted);line-height:1.6;}
   .screen-hidden{display:none !important;}
 
   footer{padding:20px 32px;color:var(--muted);font-size:12px;text-align:center;}
@@ -158,8 +158,8 @@
     header h1{font-size:17px;}
     .container{padding:16px;}
     #storageWarning{margin:12px 16px 0;font-size:12px;}
-    .header-actions{width:100%;}
-    .header-actions button{flex:1;min-height:40px;font-size:13px;}
+    .header-actions{width:100%;justify-content:flex-end;}
+    .header-actions button{min-height:40px;font-size:13px;padding:8px 16px;}
     .toolbar{flex-direction:column;align-items:stretch;}
     .toolbar button{width:100%;min-height:40px;}
     .dash-overview{padding:16px;}
@@ -173,8 +173,14 @@
     .section-head .primary{width:100%;min-height:40px;}
     .modal-actions{flex-direction:column-reverse;}
     .modal-actions button{width:100%;min-height:40px;}
-    th,td{padding:8px 10px;font-size:12px;}
-    .col-narrow{width:100px;}
+    .data-table thead{display:none;}
+    .data-table tbody tr{display:block;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px;}
+    .data-table tbody td{display:block;padding:10px 0;border:none;width:100% !important;min-width:0 !important;}
+    .data-table tbody td::before{content:attr(data-label);display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;}
+    .data-table tbody td.col-actions{text-align:right;padding-top:4px;}
+    .data-table tbody td.col-actions::before{display:none;}
+    .data-table tbody td input,.data-table tbody td textarea{min-height:44px;font-size:16px;padding:10px 12px;border:1px solid var(--border);background:var(--panel2);border-radius:8px;}
+    .data-table .empty{display:block;padding:24px 12px;}
     footer{padding:16px;font-size:11px;}
   }
 </style>
@@ -197,9 +203,6 @@
       <input type="password" id="authPassword" placeholder="Ваш пароль" autocomplete="current-password">
     </div>
     <button type="button" class="primary auth-submit" id="authSubmit">Войти</button>
-    <div class="auth-security">
-      Данные шифруются и хранятся в облаке. Доступ только по паролю.
-    </div>
   </div>
 </div>
 
@@ -210,10 +213,7 @@
     <div class="sub" id="storageStatusLine">Загрузка…</div>
   </div>
   <div class="header-actions">
-    <button id="exportBtn" title="Резервная копия">Экспорт</button>
-    <button id="importBtn" title="Загрузить из файла">Импорт</button>
     <button id="logoutBtn">Выйти</button>
-    <input type="file" id="importFile" accept=".json,application/json" hidden>
   </div>
 </header>
 
@@ -263,7 +263,7 @@
         <button id="addWorkBtn" class="primary">+ Работа</button>
       </div>
       <div class="table-wrap">
-        <table>
+        <table class="data-table">
           <thead>
             <tr>
               <th>Описание работы</th>
@@ -286,7 +286,7 @@
         <button id="addStaffBtn" class="primary">+ Сотрудник</button>
       </div>
       <div class="table-wrap">
-        <table>
+        <table class="data-table">
           <thead>
             <tr>
               <th>Сотрудник</th>
@@ -305,7 +305,7 @@
 
 </div>
 
-<footer id="footerNote">Данные зашифрованы и сохраняются автоматически.</footer>
+<footer id="footerNote">Данные сохраняются автоматически.</footer>
 </div><!-- /appShell -->
 
 <!-- MODAL: create/edit project -->
@@ -493,8 +493,8 @@ function updateStorageStatus(){
   if(!line) return;
   const labels = { idle:'готово', saving:'сохранение…', saved:'сохранено', error:'ошибка' };
   const dotCls = saveState==='error' ? 'error' : saveState==='saving' ? 'warn' : '';
-  line.innerHTML = `<span class="storage-status ${dotCls}"><span class="dot"></span>Зашифровано · ${labels[saveState]||saveState}</span>`;
-  if(footer) footer.textContent = 'Данные шифруются вашим паролем и автоматически сохраняются в облаке.';
+  line.innerHTML = `<span class="storage-status ${dotCls}"><span class="dot"></span>${labels[saveState]||saveState}</span>`;
+  if(footer) footer.textContent = 'Данные сохраняются автоматически.';
 }
 
 /* ========== AUTH UI ========== */
@@ -563,51 +563,6 @@ document.getElementById('logoutBtn').addEventListener('click', ()=>{
 
 document.getElementById('authPassword').addEventListener('keydown', e=>{
   if(e.key === 'Enter') document.getElementById('authSubmit').click();
-});
-
-function exportData(){
-  const payload = {
-    version: 3,
-    exportedAt: new Date().toISOString(),
-    projects, works, staff
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'finance-backup-' + new Date().toISOString().slice(0,10) + '.json';
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
-function importData(file){
-  const reader = new FileReader();
-  reader.onload = ()=>{
-    try {
-      const data = JSON.parse(reader.result);
-      if(!Array.isArray(data.projects) || !Array.isArray(data.works) || !Array.isArray(data.staff)){
-        alert('Неверный формат файла.');
-        return;
-      }
-      if(!confirm('Импорт заменит все текущие данные. Продолжить?')) return;
-      projects = data.projects;
-      works = data.works;
-      staff = data.staff;
-      saveAll();
-      showList();
-      alert('Данные успешно загружены.');
-    } catch(e){
-      alert('Не удалось прочитать файл: ' + e.message);
-    }
-  };
-  reader.readAsText(file);
-}
-
-document.getElementById('exportBtn').addEventListener('click', exportData);
-document.getElementById('importBtn').addEventListener('click', ()=> document.getElementById('importFile').click());
-document.getElementById('importFile').addEventListener('change', e=>{
-  const file = e.target.files[0];
-  if(file) importData(file);
-  e.target.value = '';
 });
 
 async function initApp(){
@@ -695,7 +650,9 @@ function projectStats(p){
   const clientPaid = w.reduce((a,x)=>a+Number(x.paidByClient||0),0);
   const staffOwed = s.reduce((a,x)=>a+Number(x.amount||0),0);
   const staffPaid = s.reduce((a,x)=>a+Number(x.paid||0),0);
-  return {cost, clientPaid, staffOwed, staffPaid, profit: clientPaid-staffPaid};
+  const profitFact = clientPaid - staffPaid;
+  const profitPotential = cost - staffOwed;
+  return {cost, clientPaid, staffOwed, staffPaid, profitFact, profitPotential};
 }
 
 function renderOverallSummary(){
@@ -705,8 +662,9 @@ function renderOverallSummary(){
   const totalStaffPaid = staff.reduce((s,x)=>s+Number(x.paid||0),0);
   const owedByClients = Math.max(totalCost - totalClientPaid, 0);
   const owedToStaff = Math.max(totalStaffOwed - totalStaffPaid, 0);
-  const profit = totalClientPaid - totalStaffPaid;
-  const profitCls = profit >= 0 ? 'positive' : 'negative';
+  const profitFact = totalClientPaid - totalStaffPaid;
+  const profitPotential = totalCost - totalStaffOwed;
+  const profitCls = profitPotential >= 0 ? 'positive' : 'negative';
 
   const el = document.getElementById('overallSummary');
   if(projects.length === 0){
@@ -718,8 +676,9 @@ function renderOverallSummary(){
     <div class="dash-overview">
       <div class="hero-row">
         <div class="hero-main">
-          <div class="hero-label">Чистая прибыль (получено − выплачено)</div>
-          <div class="hero-value ${profitCls}">${fmt(profit)} ₽</div>
+          <div class="hero-label">Потенциальная прибыль (стоимость − начислено)</div>
+          <div class="hero-value ${profitCls}">${fmt(profitPotential)} ₽</div>
+          <div class="hero-meta" style="margin-top:8px;">Факт: ${fmt(profitFact)} ₽ (получено − выплачено)</div>
         </div>
         <div class="hero-meta">${projects.length} ${projects.length===1?'проект':'проектов'}</div>
       </div>
@@ -756,8 +715,9 @@ function renderList(){
     <div class="project-card" data-id="${p.id}">
       <div class="pname">${esc(p.name)}</div>
       <div class="pmeta">${months.length ? months.map(monthLabel).join(' · ') : 'Без месяцев'}</div>
-      <div class="phero-label">Прибыль</div>
-      <div class="phero" style="color:${st.profit>=0?'var(--green)':'var(--red)'}">${fmt(st.profit)} ₽</div>
+      <div class="phero-label">Потенциальная прибыль</div>
+      <div class="phero" style="color:${st.profitPotential>=0?'var(--green)':'var(--red)'}">${fmt(st.profitPotential)} ₽</div>
+      <div class="pmeta" style="margin-top:4px;">Факт: ${fmt(st.profitFact)} ₽</div>
       <div class="pmini">
         <div><div class="ml">Получено</div><div class="mv">${fmt(st.clientPaid)} ₽</div></div>
         <div><div class="ml">Должны</div><div class="mv" style="color:${owedClient>0?'var(--red)':'inherit'}">${fmt(owedClient)} ₽</div></div>
@@ -823,13 +783,15 @@ function renderSummary(){
   const totalStaffPaid = fs.reduce((s,x)=>s+Number(x.paid||0),0);
   const owedByClients = Math.max(totalCost - totalClientPaid, 0);
   const owedToStaff = Math.max(totalStaffOwed - totalStaffPaid, 0);
-  const profit = totalClientPaid - totalStaffPaid;
+  const profitFact = totalClientPaid - totalStaffPaid;
+  const profitPotential = totalCost - totalStaffOwed;
 
   const monthTitle = currentMonth ? monthLabel(currentMonth) : '—';
   document.getElementById('summaryGrid').innerHTML = `
     <div class="summary-block">
       <h4>Итог за ${monthTitle}</h4>
-      <div class="metric"><span class="mk">Прибыль</span><span class="mv hero ${profit>=0?'ok':'alert'}">${fmt(profit)} ₽</span></div>
+      <div class="metric"><span class="mk">Потенциальная прибыль</span><span class="mv hero ${profitPotential>=0?'ok':'alert'}">${fmt(profitPotential)} ₽</span></div>
+      <div class="metric"><span class="mk">Факт (получено − выплачено)</span><span class="mv ${profitFact>=0?'ok':'alert'}">${fmt(profitFact)} ₽</span></div>
     </div>
     <div class="summary-block">
       <h4>Клиент</h4>
@@ -861,11 +823,11 @@ function renderWorks(){
     const st = statusOf(Number(w.cost||0), Number(w.paidByClient||0));
     return `
     <tr data-id="${w.id}">
-      <td><input type="text" value="${esc(w.description)}" data-field="description" placeholder="Что сделано"></td>
-      <td><input type="text" inputmode="numeric" class="money-input" value="${fmtInput(w.cost)}" data-field="cost" placeholder="0"></td>
-      <td><input type="text" inputmode="numeric" class="money-input" value="${fmtInput(w.paidByClient)}" data-field="paidByClient" placeholder="0"></td>
-      <td><span class="status-pill ${statusClass(st)}">${statusLabel(st)}</span></td>
-      <td class="col-comment"><input type="text" value="${esc(w.comment||'')}" data-field="comment" placeholder="Комментарий"></td>
+      <td data-label="Описание работы"><input type="text" value="${esc(w.description)}" data-field="description" placeholder="Что сделано"></td>
+      <td class="col-narrow" data-label="Стоимость"><input type="text" inputmode="numeric" class="money-input" value="${fmtInput(w.cost)}" data-field="cost" placeholder="0"></td>
+      <td class="col-narrow" data-label="Оплачено клиентом"><input type="text" inputmode="numeric" class="money-input" value="${fmtInput(w.paidByClient)}" data-field="paidByClient" placeholder="0"></td>
+      <td data-label="Статус"><span class="status-pill ${statusClass(st)}">${statusLabel(st)}</span></td>
+      <td class="col-comment" data-label="Комментарий"><input type="text" value="${esc(w.comment||'')}" data-field="comment" placeholder="Комментарий"></td>
       <td class="row-actions col-actions"><button class="danger" data-action="delete">✕</button></td>
     </tr>`;
   }).join('');
@@ -913,11 +875,11 @@ function renderStaff(){
     const st = statusOf(Number(s.amount||0), Number(s.paid||0));
     return `
     <tr data-id="${s.id}">
-      <td><input type="text" value="${esc(s.name)}" data-field="name" placeholder="Имя сотрудника"></td>
-      <td><input type="text" inputmode="numeric" class="money-input" value="${fmtInput(s.amount)}" data-field="amount" placeholder="0"></td>
-      <td><input type="text" inputmode="numeric" class="money-input" value="${fmtInput(s.paid)}" data-field="paid" placeholder="0"></td>
-      <td><span class="status-pill ${statusClass(st)}">${statusLabel(st)}</span></td>
-      <td class="col-comment"><input type="text" value="${esc(s.comment||'')}" data-field="comment" placeholder="Комментарий"></td>
+      <td data-label="Сотрудник"><input type="text" value="${esc(s.name)}" data-field="name" placeholder="Имя сотрудника"></td>
+      <td class="col-narrow" data-label="Сумма к оплате"><input type="text" inputmode="numeric" class="money-input" value="${fmtInput(s.amount)}" data-field="amount" placeholder="0"></td>
+      <td class="col-narrow" data-label="Выплачено"><input type="text" inputmode="numeric" class="money-input" value="${fmtInput(s.paid)}" data-field="paid" placeholder="0"></td>
+      <td data-label="Статус"><span class="status-pill ${statusClass(st)}">${statusLabel(st)}</span></td>
+      <td class="col-comment" data-label="Комментарий"><input type="text" value="${esc(s.comment||'')}" data-field="comment" placeholder="Комментарий"></td>
       <td class="row-actions col-actions"><button class="danger" data-action="delete">✕</button></td>
     </tr>`;
   }).join('');
