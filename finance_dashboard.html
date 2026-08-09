@@ -556,9 +556,10 @@ function showAuth(){
 
 function authErrorMessage(e){
   const msg = (e?.message || e || '').toLowerCase();
+  if(msg.includes('email_provider_disabled') || msg.includes('email logins are disabled') || msg.includes('email signups are disabled'))
+    return 'В Supabase отключён Email-провайдер. Authentication → Providers → Email → включите Enable Email provider → Save.';
   if(msg.includes('invalid login') || msg.includes('invalid credentials')) return 'Неверный пароль';
-  if(msg.includes('email not confirmed')) return 'Аккаунт не активирован. Запустите create-owner.sh или создайте пользователя в Supabase → Authentication → Users.';
-  if(msg.includes('signup') && msg.includes('disabled')) return 'Регистрация отключена. Создайте аккаунт через create-owner.sh';
+  if(msg.includes('email not confirmed')) return 'Аккаунт не подтверждён. В Supabase: Users → ваш пользователь → подтвердите email или включите Auto Confirm.';
   if(msg.includes('network') || msg.includes('fetch')) return 'Нет связи с сервером. Проверьте интернет.';
   return e?.message || 'Ошибка входа';
 }
