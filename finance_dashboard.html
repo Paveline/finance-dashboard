@@ -38,18 +38,22 @@
   .chart-legend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;font-size:12px;color:var(--muted);}
   .chart-legend span{display:flex;align-items:center;gap:6px;}
   .chart-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;}
-  .chart-legend .lg-income i{background:var(--green);}
+  .chart-legend .lg-income i{background:rgba(62,207,142,.45);}
   .chart-legend .lg-expense i{background:var(--red);}
-  .chart-legend .lg-profit i{background:var(--accent);}
+  .chart-legend .lg-profit i{background:var(--green);}
   .chart-wrap{overflow-x:auto;padding-bottom:4px;}
-  .chart-bars{display:flex;align-items:flex-end;gap:10px;min-height:180px;padding-top:8px;}
-  .chart-col{flex:1;min-width:52px;max-width:80px;display:flex;flex-direction:column;align-items:center;gap:6px;}
-  .chart-col.active .chart-label{color:var(--accent);font-weight:600;}
-  .chart-bar-group{display:flex;align-items:flex-end;justify-content:center;gap:3px;height:140px;width:100%;}
-  .chart-bar{width:14px;border-radius:4px 4px 0 0;min-height:2px;transition:height .2s;}
-  .chart-bar.income{background:var(--green);}
+  .chart-bars{display:flex;align-items:flex-end;gap:10px;min-height:180px;padding-top:24px;}
+  .chart-col{flex:1;min-width:52px;max-width:80px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;}
+  .chart-col.active .chart-label{color:var(--green);font-weight:600;}
+  .chart-bar-group{display:flex;align-items:flex-end;justify-content:center;gap:4px;height:140px;width:100%;}
+  .chart-bar{width:14px;border-radius:4px 4px 0 0;min-height:2px;transition:height .2s, filter .15s;position:relative;}
+  .chart-bar:hover{filter:brightness(1.15);}
+  .chart-bar.income{background:rgba(62,207,142,.45);}
   .chart-bar.expense{background:var(--red);}
-  .chart-bar.profit{background:var(--accent);opacity:.85;}
+  .chart-bar.profit{background:var(--green);}
+  .chart-bar.loss{background:var(--red);opacity:.75;}
+  .chart-tip{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--border);padding:5px 8px;border-radius:6px;font-size:11px;color:var(--text);white-space:nowrap;pointer-events:none;opacity:0;z-index:10;box-shadow:0 4px 12px rgba(0,0,0,.35);transition:opacity .15s;}
+  .chart-bar:hover .chart-tip{opacity:1;}
   .chart-label{font-size:11px;color:var(--muted);text-align:center;white-space:nowrap;}
   .confirm-msg{color:var(--muted);font-size:14px;line-height:1.5;margin:0 0 20px;}
   button.danger{background:rgba(255,107,107,.15);border-color:var(--red);color:var(--red);}
@@ -898,13 +902,14 @@ function renderAnalytics(){
           ${data.map(d=>{
             const ih = Math.round(d.income / maxVal * 100);
             const eh = Math.round(d.expense / maxVal * 100);
-            const ph = Math.round(Math.max(d.profit, 0) / maxVal * 100);
+            const ph = Math.round(Math.abs(d.profit) / maxVal * 100);
+            const profitBarCls = d.profit >= 0 ? 'profit' : 'loss';
             const active = d.m === listMonth ? ' active' : '';
-            return `<div class="chart-col${active}" data-month="${d.m}" title="${monthLabel(d.m)}: доход ${fmt(d.income)} ₽, расход ${fmt(d.expense)} ₽">
+            return `<div class="chart-col${active}" data-month="${d.m}">
               <div class="chart-bar-group">
-                <div class="chart-bar income" style="height:${ih}%"></div>
-                <div class="chart-bar expense" style="height:${eh}%"></div>
-                <div class="chart-bar profit" style="height:${ph}%"></div>
+                <div class="chart-bar income" style="height:${ih}%"><span class="chart-tip">Доход: ${fmt(d.income)} ₽</span></div>
+                <div class="chart-bar expense" style="height:${eh}%"><span class="chart-tip">Расход: ${fmt(d.expense)} ₽</span></div>
+                <div class="chart-bar ${profitBarCls}" style="height:${ph}%"><span class="chart-tip">Прибыль: ${fmt(d.profit)} ₽</span></div>
               </div>
               <div class="chart-label">${monthLabel(d.m)}</div>
             </div>`;
