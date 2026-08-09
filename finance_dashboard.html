@@ -182,7 +182,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Финансы">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="config.js?v=4"></script>
+<script src="config.js?v=5"></script>
 </head>
 <body>
 
@@ -368,16 +368,11 @@ const VAULT_ID = 'main';
 
 function isConfigured(){
   const c = window.SUPABASE_CONFIG;
-  return c && c.url && c.anonKey && c.appPassword &&
-    !c.url.includes('YOUR_PROJECT') && !c.anonKey.includes('YOUR_ANON') &&
-    c.appPassword !== 'YOUR_PASSWORD' && c.appPassword.length > 0;
+  return c && c.url && c.anonKey &&
+    !c.url.includes('YOUR_PROJECT') && !c.anonKey.includes('YOUR_ANON');
 }
 
-function verifyAppPassword(password){
-  return password === window.SUPABASE_CONFIG.appPassword;
-}
-
-let supabase = null;
+let sb = null;
 let cryptoKey = null;
 let vaultSalt = null;
 let saveTimer = null;
@@ -442,17 +437,10 @@ function vaultTableHint(msg){
 }
 
 async function openVault(password){
-  const { data, error } = await supabase.from('finance_vault').select('salt,ciphertext,updated_at').eq('id', VAULT_ID).maybeSingle();
+  const { data, error } = await sb.from('finance_vault').select('salt,ciphertext,updated_at').eq('id', VAULT_ID).maybeSingle();
   if(error) throw new Error(vaultTableHint(error.message));
 
-  if(!data){
-    vaultSalt = randomSalt();
-    cryptoKey = await deriveKey(password, vaultSalt);
-    emptyPayload();
-    await pushVault();
-    lastSavedAt = new Date().toISOString();
-    return;
-  }
+  if(!data) throw new Error('Хранилище не настроено. Один раз выполните: node setup-password.mjs');
 
   vaultSalt = data.salt;
   cryptoKey = await deriveKey(password, vaultSalt);
@@ -461,13 +449,13 @@ async function openVault(password){
     lastSavedAt = data.updated_at;
   } catch(e){
     cryptoKey = null;
-    throw new Error('Ошибка расшифровки данных');
+    throw new Error('Неверный пароль');
   }
 }
 
 async function pushVault(){
   if(!cryptoKey || !vaultSalt) return;
-  const { error } = await supabase.from('finance_vault').upsert({
+  const { error } = await sb.from('finance_vault').upsert({
     id: VAULT_ID,
     salt: vaultSalt,
     ciphertext: await encryptJSON(cryptoKey, getPayload()),
@@ -530,14 +518,13 @@ document.getElementById('authSubmit').addEventListener('click', async ()=>{
     showAuthError('Откройте сайт через https://paveline.github.io/finance-dashboard/');
     return;
   }
-  if(!supabase){
+  if(!sb){
     showAuthError('Обновите страницу.');
     return;
   }
 
   const password = document.getElementById('authPassword').value;
   if(!password){ showAuthError('Введите пароль.'); return; }
-  if(!verifyAppPassword(password)){ showAuthError('Неверный пароль'); return; }
 
   const btn = document.getElementById('authSubmit');
   const prevText = btn.textContent;
@@ -618,14 +605,14 @@ document.getElementById('importFile').addEventListener('change', e=>{
 
 async function initApp(){
   if(!isConfigured()){
-    showAuthError('Настройте config.js: url, anonKey и appPassword.');
+    showAuthError('Настройте config.js: url и anonKey.');
     return;
   }
   if(typeof window.supabase === 'undefined'){
     showAuthError('Обновите страницу.');
     return;
   }
-  supabase = window.supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
+  sb = window.supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
   document.getElementById('authPassword').focus();
 }
 
