@@ -190,23 +190,19 @@
 <div id="authScreen">
   <div class="auth-card">
     <h1>Учёт финансов</h1>
-    <p class="auth-sub">Личный доступ. Введите пароль для входа.</p>
+    <p class="auth-sub" id="authSub">Введите пароль для входа.</p>
     <div class="auth-error" id="authError"></div>
-    <div class="field" id="authEmailField">
-      <label>Email</label>
-      <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="username">
-    </div>
-    <div class="field" id="ownerEmailDisplay" style="display:none;">
-      <label>Аккаунт</label>
-      <div id="ownerEmailText" style="padding:10px 12px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;font-size:14px;"></div>
-    </div>
     <div class="field">
       <label>Пароль</label>
       <input type="password" id="authPassword" placeholder="Ваш пароль" autocomplete="current-password">
     </div>
+    <div class="field" id="confirmField" style="display:none;">
+      <label>Повторите пароль</label>
+      <input type="password" id="authPassword2" placeholder="Ещё раз" autocomplete="new-password">
+    </div>
     <button type="button" class="primary auth-submit" id="authSubmit">Войти</button>
     <div class="auth-security">
-      Доступ только по паролю. Данные хранятся в Supabase и недоступны другим пользователям.
+      Один личный пароль. Данные шифруются и хранятся в облаке — без пароля их не прочитать.
     </div>
   </div>
 </div>
@@ -372,27 +368,20 @@
 
 <script>
 /* ========== CONFIG & SUPABASE ========== */
+const VAULT_ID = 'main';
+
 function isConfigured(){
   const c = window.SUPABASE_CONFIG;
-  return c && c.url && c.anonKey && c.ownerEmail
-    && !c.url.includes('YOUR_PROJECT')
-    && !c.anonKey.includes('YOUR_ANON')
-    && !c.ownerEmail.includes('YOUR_EMAIL');
+  return c && c.url && c.anonKey && !c.url.includes('YOUR_PROJECT') && !c.anonKey.includes('YOUR_ANON');
 }
 
 let supabase = null;
+let cryptoKey = null;
+let vaultSalt = null;
 let saveTimer = null;
 let saveState = 'idle';
 let lastSavedAt = null;
-
-function ownerEmail(){
-  const e = window.SUPABASE_CONFIG?.ownerEmail;
-  return e && !String(e).includes('YOUR_EMAIL') ? String(e).trim().toLowerCase() : '';
-}
-
-function loginEmail(){
-  return ownerEmail() || document.getElementById('authEmail').value.trim().toLowerCase();
-}
+let isFirstSetup = false;
 
 let projects = [];
 let works = [];
@@ -405,7 +394,7 @@ function getPayload(){
 }
 
 function applyPayload(data){
-  if(!Array.isArray(data.projects) || !Array.isArray(data.works) || !Array.isArray(data.staff)) return false;
+  if(!data || !Array.isArray(data.projects) || !Array.isArray(data.works) || !Array.isArray(data.staff)) return false;
   projects = data.projects;
   works = data.works;
   staff = data.staff;
@@ -414,36 +403,82 @@ function applyPayload(data){
 
 function emptyPayload(){ projects=[]; works=[]; staff=[]; }
 
-/* ========== VAULT (Supabase, RLS) ========== */
-async function loadVault(){
-  const { data: { user } } = await supabase.auth.getUser();
-  if(!user) throw new Error('Не авторизован');
+/* ========== ENCRYPTION ========== */
+function bufToB64(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))); }
+function b64ToBuf(b64){ return Uint8Array.from(atob(b64), c=>c.charCodeAt(0)); }
+function randomSalt(){ return bufToB64(crypto.getRandomValues(new Uint8Array(16))); }
 
-  const { data, error } = await supabase.from('finance_vault').select('data,updated_at').eq('user_id', user.id).maybeSingle();
-  if(error){
-    if(/finance_vault|schema cache|PGRST/i.test(error.message))
-      throw new Error('Таблица не создана. Supabase → SQL Editor → выполните supabase-setup.sql');
-    throw new Error(error.message);
-  }
+async function deriveKey(password, saltB64){
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name:'PBKDF2', salt:b64ToBuf(saltB64), iterations:100000, hash:'SHA-256' },
+    keyMaterial, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']
+  );
+}
+
+async function encryptJSON(key, obj){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(obj)));
+  const combined = new Uint8Array(iv.length + ct.byteLength);
+  combined.set(iv); combined.set(new Uint8Array(ct), iv.length);
+  return bufToB64(combined);
+}
+
+async function decryptJSON(key, ciphertextB64){
+  const combined = b64ToBuf(ciphertextB64);
+  const dec = await crypto.subtle.decrypt(
+    { name:'AES-GCM', iv:combined.slice(0,12) }, key, combined.slice(12)
+  );
+  return JSON.parse(new TextDecoder().decode(dec));
+}
+
+/* ========== VAULT ========== */
+async function vaultExists(){
+  const { data, error } = await supabase.from('finance_vault').select('id').eq('id', VAULT_ID).maybeSingle();
+  if(error) throw new Error(vaultTableHint(error.message));
+  return !!data;
+}
+
+function vaultTableHint(msg){
+  if(/finance_vault|schema cache|PGRST/i.test(msg))
+    return 'Таблица не создана. Supabase → SQL Editor → выполните supabase-setup.sql';
+  return msg;
+}
+
+async function loadVault(password){
+  const { data, error } = await supabase.from('finance_vault').select('salt,ciphertext,updated_at').eq('id', VAULT_ID).maybeSingle();
+  if(error) throw new Error(vaultTableHint(error.message));
 
   if(!data){
+    if(!isFirstSetup) throw new Error('Неверный пароль');
+    if(password.length < 6) throw new Error('Пароль — минимум 6 символов');
+    vaultSalt = randomSalt();
+    cryptoKey = await deriveKey(password, vaultSalt);
     emptyPayload();
     await pushVault();
     return;
   }
-  applyPayload(data.data || { projects:[], works:[], staff:[] });
-  lastSavedAt = data.updated_at;
+
+  vaultSalt = data.salt;
+  cryptoKey = await deriveKey(password, vaultSalt);
+  try {
+    applyPayload(await decryptJSON(cryptoKey, data.ciphertext));
+    lastSavedAt = data.updated_at;
+  } catch(e){
+    cryptoKey = null;
+    throw new Error('Неверный пароль');
+  }
 }
 
 async function pushVault(){
-  const { data: { user } } = await supabase.auth.getUser();
-  if(!user) return;
-
+  if(!cryptoKey || !vaultSalt) return;
   const { error } = await supabase.from('finance_vault').upsert({
-    user_id: user.id,
-    data: getPayload(),
+    id: VAULT_ID,
+    salt: vaultSalt,
+    ciphertext: await encryptJSON(cryptoKey, getPayload()),
     updated_at: new Date().toISOString()
-  });
+  }, { onConflict: 'id' });
   if(error) throw new Error(error.message);
   lastSavedAt = new Date().toISOString();
 }
@@ -454,17 +489,11 @@ function scheduleSave(){
 }
 
 async function doSave(){
-  const { data: { user } } = await supabase.auth.getUser();
-  if(!user) return;
+  if(!cryptoKey) return;
   saveState = 'saving';
   updateStorageStatus();
-  try {
-    await pushVault();
-    saveState = 'saved';
-  } catch(e){
-    console.error(e);
-    saveState = 'error';
-  }
+  try { await pushVault(); saveState = 'saved'; }
+  catch(e){ console.error(e); saveState = 'error'; }
   updateStorageStatus();
 }
 
@@ -477,10 +506,10 @@ function updateStorageStatus(){
   const line = document.getElementById('storageStatusLine');
   const footer = document.getElementById('footerNote');
   if(!line) return;
-  const labels = { idle:'готово', saving:'сохранение…', saved:'сохранено', error:'ошибка сохранения' };
+  const labels = { idle:'готово', saving:'сохранение…', saved:'сохранено', error:'ошибка' };
   const dotCls = saveState==='error' ? 'error' : saveState==='saving' ? 'warn' : '';
-  line.innerHTML = `<span class="storage-status ${dotCls}"><span class="dot"></span>Облако · ${labels[saveState]||saveState}</span>`;
-  if(footer) footer.textContent = 'Данные защищены: вход по паролю + изоляция в Supabase. Доступ только у вас.';
+  line.innerHTML = `<span class="storage-status ${dotCls}"><span class="dot"></span>Зашифровано · ${labels[saveState]||saveState}</span>`;
+  if(footer) footer.textContent = 'Данные шифруются вашим паролем и автоматически сохраняются в облаке.';
 }
 
 /* ========== AUTH UI ========== */
@@ -496,75 +525,65 @@ function showApp(){
 }
 
 function showAuth(){
+  cryptoKey = null;
+  vaultSalt = null;
   document.getElementById('authScreen').style.display = '';
   document.getElementById('appShell').style.display = 'none';
 }
 
-function authErrorMessage(e){
-  const msg = (e?.message || e || '').toLowerCase();
-  if(msg.includes('email_provider_disabled') || msg.includes('email logins are disabled'))
-    return 'В Supabase включите Email: Authentication → Providers → Email → Enable.';
-  if(msg.includes('invalid login') || msg.includes('invalid credentials'))
-    return `Неверный пароль. Supabase → Authentication → Users → выберите ${ownerEmail()} → Reset password`;
-  if(msg.includes('email not confirmed'))
-    return 'Email не подтверждён. Supabase → Users → включите Auto Confirm User.';
-  if(msg.includes('network') || msg.includes('fetch')) return 'Нет связи с сервером.';
-  return e?.message || 'Ошибка входа';
-}
-
-function setupAuthUI(){
-  const email = ownerEmail();
-  if(email){
-    document.getElementById('authEmailField').style.display = 'none';
-    document.getElementById('ownerEmailDisplay').style.display = '';
-    document.getElementById('ownerEmailText').textContent = email;
-    document.getElementById('authEmail').value = email;
-  }
+function setSetupMode(first){
+  isFirstSetup = first;
+  document.getElementById('authSub').textContent = first
+    ? 'Первый вход — придумайте пароль (минимум 6 символов).'
+    : 'Введите пароль для входа.';
+  document.getElementById('confirmField').style.display = first ? '' : 'none';
+  document.getElementById('authSubmit').textContent = first ? 'Создать пароль' : 'Войти';
+  document.getElementById('authPassword').autocomplete = first ? 'new-password' : 'current-password';
 }
 
 document.getElementById('authSubmit').addEventListener('click', async ()=>{
-  if(!isConfigured()){
-    showAuthError('Supabase не настроен. Заполните config.js.');
-    return;
-  }
-  if(!ownerEmail()){
-    showAuthError('Укажите ownerEmail в config.js — ваш личный email.');
-    return;
-  }
-  const email = loginEmail();
+  if(!isConfigured()){ showAuthError('Supabase не настроен. Заполните config.js.'); return; }
+
   const password = document.getElementById('authPassword').value;
-  if(!email || !password){ showAuthError('Введите пароль.'); return; }
+  const password2 = document.getElementById('authPassword2').value;
+  if(!password){ showAuthError('Введите пароль.'); return; }
+  if(isFirstSetup){
+    if(password.length < 6){ showAuthError('Пароль — минимум 6 символов.'); return; }
+    if(password !== password2){ showAuthError('Пароли не совпадают.'); return; }
+  }
 
   const btn = document.getElementById('authSubmit');
   btn.disabled = true;
-  btn.textContent = 'Вход…';
+  btn.textContent = isFirstSetup ? 'Создание…' : 'Вход…';
   showAuthError('');
 
   try {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if(error) throw error;
-    await loadVault();
+    await loadVault(password);
     saveState = 'saved';
     showApp();
     updateStorageStatus();
     showList();
     document.getElementById('authPassword').value = '';
+    document.getElementById('authPassword2').value = '';
   } catch(e){
-    await supabase.auth.signOut();
-    showAuthError(authErrorMessage(e));
+    showAuthError(e.message || 'Ошибка входа');
   }
   btn.disabled = false;
-  btn.textContent = 'Войти';
+  btn.textContent = isFirstSetup ? 'Создать пароль' : 'Войти';
 });
 
-document.getElementById('logoutBtn').addEventListener('click', async ()=>{
-  await supabase.auth.signOut();
+document.getElementById('logoutBtn').addEventListener('click', ()=>{
+  cryptoKey = null;
   emptyPayload();
   showAuth();
   showAuthError('');
+  document.getElementById('authPassword').focus();
 });
 
 document.getElementById('authPassword').addEventListener('keydown', e=>{
+  if(e.key === 'Enter') document.getElementById('authSubmit').click();
+});
+document.getElementById('authPassword2').addEventListener('keydown', e=>{
   if(e.key === 'Enter') document.getElementById('authSubmit').click();
 });
 
@@ -614,21 +633,18 @@ document.getElementById('importFile').addEventListener('change', e=>{
 });
 
 async function initApp(){
-  setupAuthUI();
   if(!isConfigured()){
     showAuthError('Supabase не настроен. Заполните config.js.');
     return;
   }
-  if(!ownerEmail()){
-    showAuthError('Укажите ownerEmail в config.js.');
+  supabase = window.supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
+  try {
+    setSetupMode(!(await vaultExists()));
+  } catch(e){
+    showAuthError(e.message);
     return;
   }
-  supabase = window.supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
-
-  const { data: { session } } = await supabase.auth.getSession();
-  if(session){
-    document.getElementById('authPassword').focus();
-  }
+  document.getElementById('authPassword').focus();
 }
 
 function fmt(n){ return (Number(n)||0).toLocaleString('ru-RU'); }
