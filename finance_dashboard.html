@@ -182,7 +182,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Финансы">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="config.js?v=6"></script>
+<script src="config.js?v=7"></script>
 </head>
 <body>
 
@@ -203,7 +203,7 @@
   </div>
 </div>
 
-<div id="appShell" class="screen-hidden">
+<div id="appShell" style="display:none">
 <header>
   <div>
     <h1 id="homeLink">Учёт финансов по проектам</h1>
@@ -444,13 +444,16 @@ async function openVault(password){
 
   vaultSalt = data.salt;
   cryptoKey = await deriveKey(password, vaultSalt);
+  let payload;
   try {
-    applyPayload(await decryptJSON(cryptoKey, data.ciphertext));
-    lastSavedAt = data.updated_at;
+    payload = await decryptJSON(cryptoKey, data.ciphertext);
   } catch(e){
     cryptoKey = null;
+    vaultSalt = null;
     throw new Error('Неверный пароль');
   }
+  if(!applyPayload(payload)) throw new Error('Неверный пароль');
+  lastSavedAt = data.updated_at;
 }
 
 async function pushVault(){
@@ -502,15 +505,17 @@ function showAuthError(msg){
 }
 
 function showApp(){
-  document.getElementById('authScreen').classList.add('screen-hidden');
-  document.getElementById('appShell').classList.remove('screen-hidden');
+  const auth = document.getElementById('authScreen');
+  const app = document.getElementById('appShell');
+  auth.style.display = 'none';
+  app.style.display = 'block';
 }
 
 function showAuth(){
   cryptoKey = null;
   vaultSalt = null;
-  document.getElementById('authScreen').classList.remove('screen-hidden');
-  document.getElementById('appShell').classList.add('screen-hidden');
+  document.getElementById('authScreen').style.display = 'flex';
+  document.getElementById('appShell').style.display = 'none';
 }
 
 document.getElementById('authSubmit').addEventListener('click', async ()=>{
@@ -534,11 +539,13 @@ document.getElementById('authSubmit').addEventListener('click', async ()=>{
 
   try {
     await openVault(password);
-    saveState = 'saved';
     showApp();
+    if(document.getElementById('appShell').style.display === 'none'){
+      throw new Error('Не удалось открыть приложение. Обновите страницу (Cmd+Shift+R).');
+    }
+    saveState = 'saved';
     updateStorageStatus();
     showList();
-    document.getElementById('authPassword').value = '';
   } catch(e){
     showAuthError(e.message || 'Ошибка входа');
   }
