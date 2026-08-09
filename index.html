@@ -190,19 +190,19 @@
 <div id="authScreen">
   <div class="auth-card">
     <h1>Учёт финансов</h1>
-    <p class="auth-sub">Вход по email и паролю. Данные шифруются и доступны только вам.</p>
-    <div class="auth-tabs">
-      <button type="button" class="auth-tab active" id="authTabLogin">Вход</button>
-      <button type="button" class="auth-tab" id="authTabSignup">Регистрация</button>
-    </div>
+    <p class="auth-sub">Личный доступ. Введите пароль для входа.</p>
     <div class="auth-error" id="authError"></div>
-    <div class="field">
+    <div class="field" id="authEmailField">
       <label>Email</label>
       <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="username">
     </div>
+    <div class="field" id="ownerEmailDisplay" style="display:none;">
+      <label>Аккаунт</label>
+      <div id="ownerEmailText" style="padding:10px 12px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;font-size:14px;"></div>
+    </div>
     <div class="field">
       <label>Пароль</label>
-      <input type="password" id="authPassword" placeholder="Минимум 6 символов" autocomplete="current-password">
+      <input type="password" id="authPassword" placeholder="Ваш пароль" autocomplete="current-password">
     </div>
     <button type="button" class="primary auth-submit" id="authSubmit">Войти</button>
     <div class="auth-security">
@@ -374,16 +374,27 @@
 /* ========== CONFIG & SUPABASE ========== */
 function isConfigured(){
   const c = window.SUPABASE_CONFIG;
-  return c && c.url && c.anonKey && !c.url.includes('YOUR_PROJECT') && !c.anonKey.includes('YOUR_ANON');
+  return c && c.url && c.anonKey && c.ownerEmail
+    && !c.url.includes('YOUR_PROJECT')
+    && !c.anonKey.includes('YOUR_ANON')
+    && !c.ownerEmail.includes('YOUR_EMAIL');
 }
 
 let supabase = null;
 let cryptoKey = null;
 let vaultSalt = null;
 let saveTimer = null;
-let saveState = 'idle'; // idle | saving | saved | error
+let saveState = 'idle';
 let lastSavedAt = null;
-let authMode = 'login';
+
+function ownerEmail(){
+  const e = window.SUPABASE_CONFIG?.ownerEmail;
+  return e && !String(e).includes('YOUR_EMAIL') ? String(e).trim().toLowerCase() : '';
+}
+
+function loginEmail(){
+  return ownerEmail() || document.getElementById('authEmail').value.trim().toLowerCase();
+}
 
 let projects = [];
 let works = [];
@@ -543,41 +554,46 @@ function showAuth(){
   document.getElementById('appShell').style.display = 'none';
 }
 
-function setAuthMode(mode){
-  authMode = mode;
-  document.getElementById('authTabLogin').classList.toggle('active', mode==='login');
-  document.getElementById('authTabSignup').classList.toggle('active', mode==='signup');
-  document.getElementById('authSubmit').textContent = mode==='login' ? 'Войти' : 'Зарегистрироваться';
-  document.getElementById('authPassword').autocomplete = mode==='login' ? 'current-password' : 'new-password';
-  showAuthError('');
+function authErrorMessage(e){
+  const msg = (e?.message || e || '').toLowerCase();
+  if(msg.includes('invalid login') || msg.includes('invalid credentials')) return 'Неверный пароль';
+  if(msg.includes('email not confirmed')) return 'Аккаунт не активирован. Запустите create-owner.sh или создайте пользователя в Supabase → Authentication → Users.';
+  if(msg.includes('signup') && msg.includes('disabled')) return 'Регистрация отключена. Создайте аккаунт через create-owner.sh';
+  if(msg.includes('network') || msg.includes('fetch')) return 'Нет связи с сервером. Проверьте интернет.';
+  return e?.message || 'Ошибка входа';
 }
 
-document.getElementById('authTabLogin').addEventListener('click', ()=> setAuthMode('login'));
-document.getElementById('authTabSignup').addEventListener('click', ()=> setAuthMode('signup'));
+function setupAuthUI(){
+  const email = ownerEmail();
+  if(email){
+    document.getElementById('authEmailField').style.display = 'none';
+    document.getElementById('ownerEmailDisplay').style.display = '';
+    document.getElementById('ownerEmailText').textContent = email;
+    document.getElementById('authEmail').value = email;
+  }
+}
 
 document.getElementById('authSubmit').addEventListener('click', async ()=>{
   if(!isConfigured()){
-    showAuthError('Supabase не настроен. Заполните config.js (см. инструкцию).');
+    showAuthError('Supabase не настроен. Заполните config.js.');
     return;
   }
-  const email = document.getElementById('authEmail').value.trim();
+  if(!ownerEmail()){
+    showAuthError('Укажите ownerEmail в config.js — ваш личный email.');
+    return;
+  }
+  const email = loginEmail();
   const password = document.getElementById('authPassword').value;
-  if(!email || !password){ showAuthError('Введите email и пароль.'); return; }
-  if(password.length < 6){ showAuthError('Пароль — минимум 6 символов.'); return; }
+  if(!email || !password){ showAuthError('Введите пароль.'); return; }
 
   const btn = document.getElementById('authSubmit');
   btn.disabled = true;
-  btn.textContent = authMode==='login' ? 'Вход…' : 'Регистрация…';
+  btn.textContent = 'Вход…';
   showAuthError('');
 
   try {
-    if(authMode === 'signup'){
-      const { error } = await supabase.auth.signUp({ email, password });
-      if(error) throw error;
-    } else {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if(error) throw error;
-    }
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if(error) throw error;
     await loadVault(password);
     saveState = 'saved';
     showApp();
@@ -585,10 +601,10 @@ document.getElementById('authSubmit').addEventListener('click', async ()=>{
     showList();
     document.getElementById('authPassword').value = '';
   } catch(e){
-    showAuthError(e.message || 'Ошибка входа');
+    showAuthError(authErrorMessage(e));
   }
   btn.disabled = false;
-  btn.textContent = authMode==='login' ? 'Войти' : 'Зарегистрироваться';
+  btn.textContent = 'Войти';
 });
 
 document.getElementById('logoutBtn').addEventListener('click', async ()=>{
@@ -645,17 +661,20 @@ document.getElementById('importFile').addEventListener('change', e=>{
 });
 
 async function initApp(){
+  setupAuthUI();
   if(!isConfigured()){
-    showAuthError('Supabase не настроен. Заполните config.js — см. инструкцию ниже.');
+    showAuthError('Supabase не настроен. Заполните config.js.');
+    return;
+  }
+  if(!ownerEmail()){
+    showAuthError('Укажите ownerEmail в config.js.');
     return;
   }
   supabase = window.supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
 
   const { data: { session } } = await supabase.auth.getSession();
   if(session){
-    showAuthError('Сессия активна. Введите пароль для расшифровки данных.');
-    setAuthMode('login');
-    document.getElementById('authEmail').value = session.user.email || '';
+    document.getElementById('authPassword').focus();
   }
 }
 
