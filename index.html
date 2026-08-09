@@ -143,7 +143,7 @@
   .auth-card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:32px;width:100%;max-width:400px;}
   .auth-card h1{margin:0 0 8px;font-size:22px;}
   .auth-card .auth-sub{color:var(--muted);font-size:13px;margin-bottom:24px;line-height:1.5;}
-  .auth-error{color:var(--red);font-size:13px;margin-bottom:12px;display:none;}
+  .auth-error{color:var(--red);font-size:13px;margin-bottom:12px;display:none;background:rgba(255,107,107,.1);border:1px solid var(--red);border-radius:8px;padding:10px 12px;}
   .auth-tabs{display:flex;gap:8px;margin-bottom:20px;}
   .auth-tab{flex:1;padding:10px;border:1px solid var(--border);background:var(--panel2);border-radius:8px;cursor:pointer;font-size:14px;text-align:center;}
   .auth-tab.active{background:var(--accent);border-color:var(--accent);color:white;font-weight:500;}
@@ -190,17 +190,21 @@
 <div id="authScreen">
   <div class="auth-card">
     <h1>Учёт финансов</h1>
-    <p class="auth-sub" id="authSub">Введите пароль для входа.</p>
+    <p class="auth-sub" id="authSub">Придумайте пароль для первого входа.</p>
+    <div class="auth-tabs">
+      <button type="button" class="auth-tab" id="authTabLogin">Вход</button>
+      <button type="button" class="auth-tab active" id="authTabSetup">Создать пароль</button>
+    </div>
     <div class="auth-error" id="authError"></div>
     <div class="field">
       <label>Пароль</label>
       <input type="password" id="authPassword" placeholder="Ваш пароль" autocomplete="current-password">
     </div>
-    <div class="field" id="confirmField" style="display:none;">
+    <div class="field" id="confirmField">
       <label>Повторите пароль</label>
       <input type="password" id="authPassword2" placeholder="Ещё раз" autocomplete="new-password">
     </div>
-    <button type="button" class="primary auth-submit" id="authSubmit">Войти</button>
+    <button type="button" class="primary auth-submit" id="authSubmit">Создать пароль</button>
     <div class="auth-security">
       Один личный пароль. Данные шифруются и хранятся в облаке — без пароля их не прочитать.
     </div>
@@ -533,23 +537,42 @@ function showAuth(){
 
 function setSetupMode(first){
   isFirstSetup = first;
+  document.getElementById('authTabLogin').classList.toggle('active', !first);
+  document.getElementById('authTabSetup').classList.toggle('active', first);
   document.getElementById('authSub').textContent = first
-    ? 'Первый вход — придумайте пароль (минимум 6 символов).'
-    : 'Введите пароль для входа.';
+    ? 'Придумайте пароль (минимум 6 символов).'
+    : 'Введите свой пароль.';
   document.getElementById('confirmField').style.display = first ? '' : 'none';
   document.getElementById('authSubmit').textContent = first ? 'Создать пароль' : 'Войти';
   document.getElementById('authPassword').autocomplete = first ? 'new-password' : 'current-password';
+  document.getElementById('authPassword').value = '';
+  document.getElementById('authPassword2').value = '';
+  showAuthError('');
 }
 
+document.getElementById('authTabLogin').addEventListener('click', ()=> setSetupMode(false));
+document.getElementById('authTabSetup').addEventListener('click', ()=> setSetupMode(true));
+
 document.getElementById('authSubmit').addEventListener('click', async ()=>{
-  if(!isConfigured()){ showAuthError('Supabase не настроен. Заполните config.js.'); return; }
+  if(!window.crypto?.subtle){
+    showAuthError('Шифрование недоступно. Откройте сайт через https://, не как файл.');
+    return;
+  }
+  if(!supabase){
+    showAuthError('Приложение не инициализировано. Обновите страницу.');
+    return;
+  }
 
   const password = document.getElementById('authPassword').value;
   const password2 = document.getElementById('authPassword2').value;
   if(!password){ showAuthError('Введите пароль.'); return; }
+
   if(isFirstSetup){
     if(password.length < 6){ showAuthError('Пароль — минимум 6 символов.'); return; }
     if(password !== password2){ showAuthError('Пароли не совпадают.'); return; }
+    const exists = await vaultExists().catch(e=>{ showAuthError(e.message); return null; });
+    if(exists === null) return;
+    if(exists){ showAuthError('Пароль уже создан. Перейдите на вкладку «Вход».'); return; }
   }
 
   const btn = document.getElementById('authSubmit');
@@ -566,7 +589,7 @@ document.getElementById('authSubmit').addEventListener('click', async ()=>{
     document.getElementById('authPassword').value = '';
     document.getElementById('authPassword2').value = '';
   } catch(e){
-    showAuthError(e.message || 'Ошибка входа');
+    showAuthError(e.message || 'Ошибка');
   }
   btn.disabled = false;
   btn.textContent = isFirstSetup ? 'Создать пароль' : 'Войти';
@@ -637,12 +660,17 @@ async function initApp(){
     showAuthError('Supabase не настроен. Заполните config.js.');
     return;
   }
+  if(typeof window.supabase === 'undefined'){
+    showAuthError('Не загрузилась библиотека Supabase. Обновите страницу.');
+    return;
+  }
   supabase = window.supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
   try {
-    setSetupMode(!(await vaultExists()));
+    const exists = await vaultExists();
+    setSetupMode(!exists);
   } catch(e){
     showAuthError(e.message);
-    return;
+    setSetupMode(true);
   }
   document.getElementById('authPassword').focus();
 }
