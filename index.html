@@ -192,10 +192,6 @@
     <h1>Учёт финансов</h1>
     <p class="auth-sub" id="authSub">Введите пароль</p>
     <div class="auth-error" id="authError"></div>
-    <div id="setupHint" style="display:none;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
-      Пароль ещё не настроен. Один раз на компьютере выполните в Terminal:<br>
-      <code style="color:var(--text);">cd "/Users/paveline/Desktop/Cursor Projects/Studio" && node setup-password.mjs</code>
-    </div>
     <div class="field">
       <label>Пароль</label>
       <input type="password" id="authPassword" placeholder="Ваш пароль" autocomplete="current-password">
@@ -372,7 +368,13 @@ const VAULT_ID = 'main';
 
 function isConfigured(){
   const c = window.SUPABASE_CONFIG;
-  return c && c.url && c.anonKey && !c.url.includes('YOUR_PROJECT') && !c.anonKey.includes('YOUR_ANON');
+  return c && c.url && c.anonKey && c.appPassword &&
+    !c.url.includes('YOUR_PROJECT') && !c.anonKey.includes('YOUR_ANON') &&
+    c.appPassword !== 'YOUR_PASSWORD' && c.appPassword.length > 0;
+}
+
+function verifyAppPassword(password){
+  return password === window.SUPABASE_CONFIG.appPassword;
 }
 
 let supabase = null;
@@ -433,23 +435,24 @@ async function decryptJSON(key, ciphertextB64){
 }
 
 /* ========== VAULT ========== */
-async function vaultExists(){
-  const { data, error } = await supabase.from('finance_vault').select('id').eq('id', VAULT_ID).maybeSingle();
-  if(error) throw new Error(vaultTableHint(error.message));
-  return !!data;
-}
-
 function vaultTableHint(msg){
   if(/finance_vault|schema cache|PGRST/i.test(msg))
     return 'Таблица не создана. Supabase → SQL Editor → выполните supabase-setup.sql';
   return msg;
 }
 
-async function loadVault(password){
+async function openVault(password){
   const { data, error } = await supabase.from('finance_vault').select('salt,ciphertext,updated_at').eq('id', VAULT_ID).maybeSingle();
   if(error) throw new Error(vaultTableHint(error.message));
 
-  if(!data) throw new Error('Неверный пароль');
+  if(!data){
+    vaultSalt = randomSalt();
+    cryptoKey = await deriveKey(password, vaultSalt);
+    emptyPayload();
+    await pushVault();
+    lastSavedAt = new Date().toISOString();
+    return;
+  }
 
   vaultSalt = data.salt;
   cryptoKey = await deriveKey(password, vaultSalt);
@@ -458,7 +461,7 @@ async function loadVault(password){
     lastSavedAt = data.updated_at;
   } catch(e){
     cryptoKey = null;
-    throw new Error('Неверный пароль');
+    throw new Error('Ошибка расшифровки данных');
   }
 }
 
@@ -534,14 +537,16 @@ document.getElementById('authSubmit').addEventListener('click', async ()=>{
 
   const password = document.getElementById('authPassword').value;
   if(!password){ showAuthError('Введите пароль.'); return; }
+  if(!verifyAppPassword(password)){ showAuthError('Неверный пароль'); return; }
 
   const btn = document.getElementById('authSubmit');
   const prevText = btn.textContent;
   btn.textContent = 'Вход…';
+  btn.disabled = true;
   showAuthError('');
 
   try {
-    await loadVault(password);
+    await openVault(password);
     saveState = 'saved';
     showApp();
     updateStorageStatus();
@@ -551,6 +556,7 @@ document.getElementById('authSubmit').addEventListener('click', async ()=>{
     showAuthError(e.message || 'Ошибка входа');
   }
   btn.textContent = prevText;
+  btn.disabled = false;
 });
 
 document.getElementById('logoutBtn').addEventListener('click', ()=>{
@@ -612,7 +618,7 @@ document.getElementById('importFile').addEventListener('change', e=>{
 
 async function initApp(){
   if(!isConfigured()){
-    showAuthError('Supabase не настроен.');
+    showAuthError('Настройте config.js: url, anonKey и appPassword.');
     return;
   }
   if(typeof window.supabase === 'undefined'){
@@ -620,16 +626,7 @@ async function initApp(){
     return;
   }
   supabase = window.supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
-
-  try {
-    const exists = await vaultExists();
-    document.getElementById('setupHint').style.display = exists ? 'none' : '';
-    document.getElementById('authSubmit').style.display = exists ? '' : 'none';
-    document.getElementById('authPassword').disabled = !exists;
-    if(exists) document.getElementById('authPassword').focus();
-  } catch(e){
-    showAuthError(e.message);
-  }
+  document.getElementById('authPassword').focus();
 }
 
 function fmt(n){ return (Number(n)||0).toLocaleString('ru-RU'); }
