@@ -30,6 +30,9 @@
 
   /* ---- Project list view ---- */
   .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px;}
+  .dash-month-bar{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:20px;padding:12px 16px;background:var(--panel);border:1px solid var(--border);border-radius:12px;}
+  .dash-month-bar button{min-width:44px;min-height:44px;font-size:18px;padding:0;}
+  .dash-month-label{font-size:16px;font-weight:600;min-width:120px;text-align:center;}
   .project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;}
   .project-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px 20px;cursor:pointer;transition:.15s;}
   .project-card:hover{border-color:#3d4654;background:var(--panel2);}
@@ -224,8 +227,13 @@
   <!-- LIST VIEW -->
   <div id="listView">
     <div id="overallSummary"></div>
+    <div class="dash-month-bar">
+      <button type="button" class="ghost" id="listMonthPrev" aria-label="Предыдущий месяц">←</button>
+      <div class="dash-month-label" id="listMonthLabel">—</div>
+      <button type="button" class="ghost" id="listMonthNext" aria-label="Следующий месяц">→</button>
+    </div>
     <div class="toolbar">
-      <h2 style="margin:0;font-size:16px;font-weight:600;">Проекты</h2>
+      <h2 style="margin:0;font-size:16px;font-weight:600;">Проекты за месяц</h2>
       <button id="addProjectBtn" class="primary">+ Новый проект</button>
     </div>
     <div class="project-grid" id="projectGrid"></div>
@@ -584,6 +592,18 @@ function statusOf(total, paid){ if(total>0 && paid>=total) return 'paid'; if(pai
 function statusLabel(s){ return s==='paid'?'Оплачено':s==='partial'?'Частично':'Не оплачено'; }
 function statusClass(s){ return s==='paid'?'status-paid':s==='partial'?'status-partial':'status-unpaid'; }
 function monthLabel(m){ if(!m) return ''; const [y,mo]=m.split('-'); const names=['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек']; return names[parseInt(mo,10)-1]+' '+y; }
+function currentMonthKey(){
+  const now = new Date();
+  return now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+}
+function shiftMonth(ym, delta){
+  const [y, mo] = ym.split('-').map(Number);
+  const d = new Date(y, mo - 1 + delta, 1);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+}
+function projectsForMonth(month){
+  return projects.filter(p=>(p.months||[]).includes(month));
+}
 function projectById(id){ return projects.find(p=>p.id===id); }
 
 /* ---------- Money input formatting ---------- */
@@ -617,10 +637,16 @@ function getMonthSelectValue(prefix){
 /* ---------- App state ---------- */
 let currentProjectId = null;
 let currentMonth = null;
+let listMonth = null;
+
+function ensureListMonth(){
+  if(!listMonth) listMonth = currentMonthKey();
+}
 
 /* ---------- Views ---------- */
 function showList(){
-  currentProjectId = null; currentMonth = null;
+  currentProjectId = null;
+  ensureListMonth();
   document.getElementById('listView').style.display = 'block';
   document.getElementById('projectView').style.display = 'none';
   renderList();
@@ -629,7 +655,9 @@ function showProject(id){
   currentProjectId = id;
   const p = projectById(id);
   if(!p) return showList();
-  currentMonth = p.months[p.months.length-1] || null;
+  ensureListMonth();
+  if(listMonth && (p.months||[]).includes(listMonth)) currentMonth = listMonth;
+  else currentMonth = (p.months||[]).slice().sort().pop() || null;
   document.getElementById('listView').style.display = 'none';
   document.getElementById('projectView').style.display = 'block';
   renderProject();
@@ -638,14 +666,25 @@ function showProject(id){
 document.getElementById('homeLink').addEventListener('click', showList);
 document.getElementById('backBtn').addEventListener('click', showList);
 
+document.getElementById('listMonthPrev').addEventListener('click', ()=>{
+  ensureListMonth();
+  listMonth = shiftMonth(listMonth, -1);
+  renderList();
+});
+document.getElementById('listMonthNext').addEventListener('click', ()=>{
+  ensureListMonth();
+  listMonth = shiftMonth(listMonth, 1);
+  renderList();
+});
+
 document.getElementById('newProjectMonthRow').innerHTML = monthSelectHTML('newProject');
 document.getElementById('addMonthRow').innerHTML = monthSelectHTML('addMonth');
 document.getElementById('copyMonthRow').innerHTML = monthSelectHTML('copyMonth');
 
 /* ---------- List view render ---------- */
-function projectStats(p){
-  const w = works.filter(x=>x.projectId===p.id);
-  const s = staff.filter(x=>x.projectId===p.id);
+function projectStats(p, month){
+  const w = works.filter(x=>x.projectId===p.id && x.month===month);
+  const s = staff.filter(x=>x.projectId===p.id && x.month===month);
   const cost = w.reduce((a,x)=>a+Number(x.cost||0),0);
   const clientPaid = w.reduce((a,x)=>a+Number(x.paidByClient||0),0);
   const staffOwed = s.reduce((a,x)=>a+Number(x.amount||0),0);
@@ -655,11 +694,15 @@ function projectStats(p){
   return {cost, clientPaid, staffOwed, staffPaid, profitFact, profitPotential};
 }
 
-function renderOverallSummary(){
-  const totalCost = works.reduce((s,w)=>s+Number(w.cost||0),0);
-  const totalClientPaid = works.reduce((s,w)=>s+Number(w.paidByClient||0),0);
-  const totalStaffOwed = staff.reduce((s,x)=>s+Number(x.amount||0),0);
-  const totalStaffPaid = staff.reduce((s,x)=>s+Number(x.paid||0),0);
+function renderOverallSummary(month){
+  const visible = projectsForMonth(month);
+  const ids = new Set(visible.map(p=>p.id));
+  const monthWorks = works.filter(w=>w.month===month && ids.has(w.projectId));
+  const monthStaff = staff.filter(s=>s.month===month && ids.has(s.projectId));
+  const totalCost = monthWorks.reduce((s,w)=>s+Number(w.cost||0),0);
+  const totalClientPaid = monthWorks.reduce((s,w)=>s+Number(w.paidByClient||0),0);
+  const totalStaffOwed = monthStaff.reduce((s,x)=>s+Number(x.amount||0),0);
+  const totalStaffPaid = monthStaff.reduce((s,x)=>s+Number(x.paid||0),0);
   const owedByClients = Math.max(totalCost - totalClientPaid, 0);
   const owedToStaff = Math.max(totalStaffOwed - totalStaffPaid, 0);
   const profitFact = totalClientPaid - totalStaffPaid;
@@ -667,7 +710,7 @@ function renderOverallSummary(){
   const profitCls = profitPotential >= 0 ? 'positive' : 'negative';
 
   const el = document.getElementById('overallSummary');
-  if(projects.length === 0){
+  if(visible.length === 0){
     el.innerHTML = '';
     return;
   }
@@ -676,11 +719,11 @@ function renderOverallSummary(){
     <div class="dash-overview">
       <div class="hero-row">
         <div class="hero-main">
-          <div class="hero-label">Потенциальная прибыль (стоимость − начислено)</div>
+          <div class="hero-label">Потенциальная прибыль за ${monthLabel(month)}</div>
           <div class="hero-value ${profitCls}">${fmt(profitPotential)} ₽</div>
           <div class="hero-meta" style="margin-top:8px;">Факт: ${fmt(profitFact)} ₽ (получено − выплачено)</div>
         </div>
-        <div class="hero-meta">${projects.length} ${projects.length===1?'проект':'проектов'}</div>
+        <div class="hero-meta">${visible.length} ${visible.length===1?'проект':'проектов'}</div>
       </div>
       <div class="dash-columns">
         <div class="dash-block">
@@ -700,21 +743,26 @@ function renderOverallSummary(){
 }
 
 function renderList(){
-  renderOverallSummary();
+  ensureListMonth();
+  document.getElementById('listMonthLabel').textContent = monthLabel(listMonth);
+  const visible = projectsForMonth(listMonth);
+  renderOverallSummary(listMonth);
   const grid = document.getElementById('projectGrid');
   if(projects.length===0){
     grid.innerHTML = `<div class="empty" style="grid-column:1/-1;">Пока нет проектов. Нажмите «+ Новый проект», чтобы начать.</div>`;
     return;
   }
-  grid.innerHTML = projects.map(p=>{
-    const st = projectStats(p);
-    const months = (p.months||[]).slice().sort();
+  if(visible.length===0){
+    grid.innerHTML = `<div class="empty" style="grid-column:1/-1;">Нет проектов за ${monthLabel(listMonth)}. Переключите месяц или создайте новый проект.</div>`;
+    return;
+  }
+  grid.innerHTML = visible.map(p=>{
+    const st = projectStats(p, listMonth);
     const owedClient = Math.max(st.cost - st.clientPaid, 0);
     const owedStaff = Math.max(st.staffOwed - st.staffPaid, 0);
     return `
     <div class="project-card" data-id="${p.id}">
       <div class="pname">${esc(p.name)}</div>
-      <div class="pmeta">${months.length ? months.map(monthLabel).join(' · ') : 'Без месяцев'}</div>
       <div class="phero-label">Потенциальная прибыль</div>
       <div class="phero" style="color:${st.profitPotential>=0?'var(--green)':'var(--red)'}">${fmt(st.profitPotential)} ₽</div>
       <div class="pmeta" style="margin-top:4px;">Факт: ${fmt(st.profitFact)} ₽</div>
@@ -938,7 +986,8 @@ document.getElementById('addProjectBtn').addEventListener('click', ()=>{
   document.getElementById('projectModalTitle').textContent = 'Новый проект';
   document.getElementById('mProjectName').value = '';
   document.getElementById('mProjectComment').value = '';
-  setMonthSelectValue('newProject', null);
+  ensureListMonth();
+  setMonthSelectValue('newProject', listMonth);
   projectModal.classList.add('open');
   setTimeout(()=> document.getElementById('mProjectName').focus(), 50);
 });
@@ -1004,10 +1053,12 @@ document.getElementById('monthSave').addEventListener('click', ()=>{
   if(!p.months) p.months = [];
   if(p.months.includes(m)){ alert('Такой месяц уже добавлен.'); return; }
   p.months.push(m);
+  p.months.sort();
   saveProjects();
   currentMonth = m;
   monthModal.classList.remove('open');
   renderProject();
+  if(listMonth === m) renderList();
 });
 
 /* ---------- Copy month modal ---------- */
